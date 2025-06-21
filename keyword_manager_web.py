@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 import pytz
 import os
-import chardet  # ✅ 추가
+import chardet
 
 app = Flask(__name__)
 
@@ -81,7 +81,7 @@ def record_keyword(keyword, channel, pc):
         logs.append(f"✅ 기록 완료: {keyword} - {channel} - {pc}")
 
     conn.close()
-    export_history_csv()
+    export_combined_csv()
     return logs
 
 def check_history(keyword):
@@ -101,11 +101,23 @@ def check_history(keyword):
         logs.append("ℹ️ 이력이 없습니다.")
     return logs
 
-def export_history_csv():
+def export_combined_csv():
     conn = sqlite3.connect(DB_FILE)
-    df = pd.read_sql_query("SELECT * FROM history", conn)
+    # history
+    df_history = pd.read_sql_query("SELECT * FROM history", conn)
+    df_history.insert(0, "table", "history")
+    # memos
+    df_memos = pd.read_sql_query("SELECT keyword FROM memos", conn)
+    df_memos["table"] = "memos"
+    df_memos["channel"] = None
+    df_memos["pc"] = None
+    df_memos["created_at"] = None
+    df_memos = df_memos[["table", "keyword", "channel", "pc", "created_at"]]
+
+    df_all = pd.concat([df_history, df_memos], ignore_index=True)
     conn.close()
-    df.to_csv("history.csv", index=False)
+
+    df_all.to_csv("backup.csv", index=False)
 
 def load_memo_list():
     conn = sqlite3.connect(DB_FILE)
@@ -122,6 +134,7 @@ def add_memo(keyword):
         cur.execute("INSERT OR IGNORE INTO memos (keyword) VALUES (?)", (keyword,))
         conn.commit()
         conn.close()
+        export_combined_csv()
 
 def delete_memo(keyword):
     if keyword:
@@ -130,32 +143,41 @@ def delete_memo(keyword):
         cur.execute("DELETE FROM memos WHERE keyword=?", (keyword,))
         conn.commit()
         conn.close()
+        export_combined_csv()
 
-@app.route("/download")
-def download_history():
-    if os.path.exists("history.csv"):
-        return send_file("history.csv", as_attachment=True)
-    else:
-        return "CSV 파일이 아직 생성되지 않았습니다."
+@app.route("/download_all")
+def download_all():
+    export_combined_csv()
+    return send_file("backup.csv", as_attachment=True)
 
-@app.route("/upload", methods=["GET", "POST"])
-def upload_csv():
+@app.route("/upload_all", methods=["GET", "POST"])
+def upload_all():
     if request.method == "POST":
         f = request.files["file"]
         if f and f.filename.endswith(".csv"):
-            f.save("uploaded_history.csv")
-            # ✅ chardet 로 인코딩 자동 감지!
-            with open("uploaded_history.csv", "rb") as rawdata:
+            f.save("uploaded_backup.csv")
+
+            with open("uploaded_backup.csv", "rb") as rawdata:
                 result = chardet.detect(rawdata.read())
                 detected_encoding = result['encoding']
-            df = pd.read_csv("uploaded_history.csv", encoding=detected_encoding)
+
+            try:
+                df_all = pd.read_csv("uploaded_backup.csv", encoding=detected_encoding)
+            except Exception:
+                df_all = pd.read_csv("uploaded_backup.csv", encoding="utf-8-sig")
+
+            df_history = df_all[df_all["table"] == "history"].drop(columns=["table"])
+            df_memos = df_all[df_all["table"] == "memos"][["keyword"]].drop_duplicates()
+
             conn = sqlite3.connect(DB_FILE)
-            df.to_sql("history", conn, if_exists="replace", index=False)
+            df_history.to_sql("history", conn, if_exists="replace", index=False)
+            df_memos.to_sql("memos", conn, if_exists="replace", index=False)
             conn.close()
-            export_history_csv()
-            return f"✅ CSV 복원 완료! (인코딩: {detected_encoding})"
+
+            export_combined_csv()
+            return f"✅ 통합 CSV 복원 완료! (인코딩: {detected_encoding})"
     return '''
-        <h3 style="color:lime;">📤 CSV 업로드</h3>
+        <h3 style="color:lime;">📤 통합 CSV 업로드</h3>
         <form method="POST" enctype="multipart/form-data">
             <input type="file" name="file" accept=".csv">
             <input type="submit" value="Upload">
