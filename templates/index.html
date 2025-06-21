@@ -11,7 +11,7 @@
       background: #111;
       color: #0f0;
       font-family: sans-serif;
-      overflow: hidden;
+      overflow: hidden; /* 중복 스크롤 제거 */
     }
 
     .container {
@@ -26,60 +26,58 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
+      flex: 1;
+      overflow-y: auto; /* 메인 영역만 스크롤 허용 */
+      overscroll-behavior: contain; /* 덜덜 방지 */
     }
 
-    input, button {
+    input {
       padding: 10px;
-      font-size: 16px;
-      border-radius: 8px;
+      font-size: 18px;
       width: 100%;
+      border-radius: 8px;
+      border: none;
     }
 
-    .button-row {
+    .row {
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
     }
 
-    .selector-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin: 10px 0;
-    }
-
-    .selector-button {
-      padding: 8px 12px;
-      background: #000;
-      color: #0f0;
-      border: none;
+    button {
+      padding: 10px;
+      font-size: 18px;
       border-radius: 8px;
+      border: none;
       cursor: pointer;
     }
 
-    .selector-button.selected {
-      background: #0f0;
-      color: #000;
+    .select-btn {
+      background: black;
+      color: #0f0;
     }
 
-    .memo-area, .log-area {
-      flex: 1;
-      overflow-y: auto;
+    .select-btn.selected {
+      background: #0f0;
+      color: #111;
+    }
+
+    .memo-input {
+      margin-bottom: 20px;
+      display: block;
+    }
+
+    .log {
       background: #222;
-      padding: 10px;
-      margin-top: 15px;
-      overscroll-behavior: contain;
       border-radius: 8px;
+      padding: 10px;
+      margin-top: 20px;
+      white-space: pre-wrap;
     }
 
     ul {
-      margin: 0;
-      padding: 0;
-    }
-
-    li {
-      list-style: none;
-      margin: 5px 0;
+      margin-top: 20px;
     }
   </style>
 </head>
@@ -87,55 +85,77 @@
   <div class="container">
     <h2>Keyword Manager Web</h2>
     <form method="POST">
+      <!-- ✅ 키워드 입력 -->
       <input name="keyword" value="{{ keyword }}" placeholder="키워드 입력" />
 
       <!-- ✅ 채널 선택 -->
-      <div><strong>채널 선택:</strong></div>
-      <div class="selector-row">
-        {% for channel in channels %}
-          <button type="submit" name="selected_channel" value="{{ channel }}" class="selector-button {% if channel == selected_channel %}selected{% endif %}">{{ channel }}</button>
-        {% endfor %}
+      <h4>📡 채널 선택</h4>
+      <div class="row" id="channel-buttons">
+        <button type="button" class="select-btn" onclick="selectOption('channel', '지마켓', this)">지마켓</button>
+        <button type="button" class="select-btn" onclick="selectOption('channel', '쿠팡', this)">쿠팡</button>
+        <button type="button" class="select-btn" onclick="selectOption('channel', '지그재그', this)">지그재그</button>
+        <button type="button" class="select-btn" onclick="selectOption('channel', '도매꾹', this)">도매꾹</button>
+        <button type="button" class="select-btn" onclick="selectOption('channel', '에이블리', this)">에이블리</button>
+        <button type="button" class="select-btn" onclick="selectOption('channel', '4910', this)">4910</button>
       </div>
 
       <!-- ✅ PC 선택 -->
-      <div><strong>PC 선택:</strong></div>
-      <div class="selector-row">
-        {% for pc in pcs %}
-          <button type="submit" name="selected_pc" value="{{ pc }}" class="selector-button {% if pc == selected_pc %}selected{% endif %}">{{ pc }}</button>
+      <h4>💻 PC 선택</h4>
+      <div class="row" id="pc-buttons">
+        <button type="button" class="select-btn" onclick="selectOption('pc', 'Lenovo', this)">Lenovo</button>
+        <button type="button" class="select-btn" onclick="selectOption('pc', 'HP', this)">HP</button>
+        <button type="button" class="select-btn" onclick="selectOption('pc', 'Razer', this)">Razer</button>
+      </div>
+
+      <!-- ✅ 기록/조회 -->
+      <div class="row">
+        <button name="action" value="record">📝 기록하기</button>
+        <button name="action" value="check">🔍 조회하기</button>
+      </div>
+
+      <!-- ✅ 로그 -->
+      <div class="log">
+        {% for line in log %}
+          {{ line }}<br />
         {% endfor %}
       </div>
 
-      <!-- ✅ 기록 & 조회 -->
-      <div class="button-row">
-        <button type="submit" name="action" value="record">📝 기록하기</button>
-        <button type="submit" name="action" value="check">🔍 조회하기</button>
+      <!-- ✅ 메모 기능 -->
+      <div>
+        <h4>🗂️ 메모 기능</h4>
+        <input class="memo-input" name="memo_keyword" placeholder="메모할 키워드 입력" />
+
+        <div class="row">
+          <button name="action" value="add_memo">+ 추가</button>
+          <button name="action" value="delete_memo">- 삭제</button>
+        </div>
+
+        <h4>📌 메모 키워드</h4>
+        <ul>
+          {% for memo in memo_list %}
+            <li>{{ memo }}</li>
+          {% endfor %}
+        </ul>
       </div>
 
-      <!-- ✅ 메모 추가/삭제 -->
-      <input name="memo_keyword" placeholder="메모할 키워드 입력" />
-      <div class="button-row">
-        <button type="submit" name="action" value="add_memo">+ 추가</button>
-        <button type="submit" name="action" value="delete_memo">- 삭제</button>
-      </div>
+      <!-- ✅ 선택값 hidden -->
+      <input type="hidden" name="selected_channel" id="selected_channel">
+      <input type="hidden" name="selected_pc" id="selected_pc">
     </form>
-
-    <!-- ✅ 메모 리스트 -->
-    <h4>📌 메모 키워드</h4>
-    <div class="memo-area">
-      <ul>
-        {% for memo in memo_list %}
-          <li>{{ memo }}</li>
-        {% endfor %}
-      </ul>
-    </div>
-
-    <!-- ✅ 로그 -->
-    <h4>📑 로그</h4>
-    <div class="log-area">
-      {% for line in log %}
-        {{ line }}<br>
-      {% endfor %}
-    </div>
   </div>
+
+  <!-- ✅ 선택 처리 JS -->
+  <script>
+    function selectOption(type, value, btn) {
+      if (type === 'channel') {
+        document.getElementById('selected_channel').value = value;
+        document.querySelectorAll('#channel-buttons .select-btn').forEach(b => b.classList.remove('selected'));
+      } else {
+        document.getElementById('selected_pc').value = value;
+        document.querySelectorAll('#pc-buttons .select-btn').forEach(b => b.classList.remove('selected'));
+      }
+      btn.classList.add('selected');
+    }
+  </script>
 </body>
 </html>
