@@ -22,7 +22,6 @@ CREATE TABLE IF NOT EXISTS memos (
 )
 """)
 
-# ✅ 반드시 close는 마지막에 한 번만!
 conn.commit()
 conn.close()
 

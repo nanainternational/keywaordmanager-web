@@ -143,11 +143,12 @@ def upload_csv():
         f = request.files["file"]
         if f and f.filename.endswith(".csv"):
             f.save("uploaded_history.csv")
-            df = pd.read_csv("uploaded_history.csv")
+            # ✅ 인코딩 지정으로 오류 방지!
+            df = pd.read_csv("uploaded_history.csv", encoding="cp949")
             conn = sqlite3.connect(DB_FILE)
             df.to_sql("history", conn, if_exists="replace", index=False)
             conn.close()
-            export_history_csv()  # CSV 동기화
+            export_history_csv()  # 동기화
             return "✅ CSV 복원 완료!"
     return '''
         <h3 style="color:lime;">📤 CSV 업로드</h3>
