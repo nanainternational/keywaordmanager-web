@@ -3,11 +3,11 @@ import sqlite3
 conn = sqlite3.connect("keyword_manager.db")
 cur = conn.cursor()
 
-# ✅ 이미 있으면 테이블 DROP
+# 기존 테이블 삭제
 cur.execute("DROP TABLE IF EXISTS history")
 cur.execute("DROP TABLE IF EXISTS memos")
 
-# ✅ 새로 만들기
+# 새로 테이블 생성 (pc 컬럼 포함)
 cur.execute("""
 CREATE TABLE history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

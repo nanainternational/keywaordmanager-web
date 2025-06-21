@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request
 import sqlite3
 from datetime import datetime
+import pytz
 
 app = Flask(__name__)
 
@@ -9,7 +10,6 @@ DB_FILE = "keyword_manager.db"
 CHANNELS = ["지마켓", "쿠팡", "지그재그", "도매꾹", "에이블리", "4910"]
 PCS = ["Lenovo", "HP", "Razer"]
 
-# === DB 연결 함수 ===
 def get_db():
     return sqlite3.connect(DB_FILE)
 
@@ -29,14 +29,17 @@ def record_keyword(keyword, channel, pc):
     conn = get_db()
     cur = conn.cursor()
 
-    # 중복 확인
     cur.execute("SELECT * FROM history WHERE keyword=? AND channel=?", (keyword, channel))
     if cur.fetchone():
         logs.append("⚠️ 이미 기록됨!")
     else:
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        cur.execute("INSERT INTO history (keyword, channel, pc, created_at) VALUES (?, ?, ?, ?)",
-                    (keyword, channel, pc, now))
+        # ✅ pytz로 한국시간
+        KST = pytz.timezone('Asia/Seoul')
+        now = datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S')
+        cur.execute(
+            "INSERT INTO history (keyword, channel, pc, created_at) VALUES (?, ?, ?, ?)",
+            (keyword, channel, pc, now)
+        )
         conn.commit()
         logs.append(f"✅ 기록 완료: {keyword} - {channel} - {pc}")
 
@@ -80,7 +83,7 @@ def add_memo(keyword):
             cur.execute("INSERT INTO memos (keyword) VALUES (?)", (keyword,))
             conn.commit()
         except sqlite3.IntegrityError:
-            pass  # 중복 무시
+            pass
         conn.close()
 
 def delete_memo(keyword):
@@ -127,6 +130,5 @@ def index():
                            channels=CHANNELS,
                            pcs=PCS)
 
-# === 서버 실행 ===
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
