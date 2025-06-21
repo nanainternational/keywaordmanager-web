@@ -11,6 +11,7 @@ app = Flask(__name__)
 DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
 
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     keyword = ""
@@ -50,6 +51,7 @@ def index():
                            selected_channel=selected_channel,
                            selected_pc=selected_pc)
 
+
 def record_keyword(keyword, channel, pc):
     logs = []
     if not keyword:
@@ -84,6 +86,7 @@ def record_keyword(keyword, channel, pc):
     export_combined_csv()
     return logs
 
+
 def check_history(keyword):
     logs = []
     conn = sqlite3.connect(DB_FILE)
@@ -100,6 +103,7 @@ def check_history(keyword):
     else:
         logs.append("ℹ️ 이력이 없습니다.")
     return logs
+
 
 def export_combined_csv():
     conn = sqlite3.connect(DB_FILE)
@@ -119,6 +123,7 @@ def export_combined_csv():
 
     df_all.to_csv("backup.csv", index=False)
 
+
 def load_memo_list():
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
@@ -126,6 +131,7 @@ def load_memo_list():
     memos = [row[0] for row in cur.fetchall()]
     conn.close()
     return memos
+
 
 def add_memo(keyword):
     if keyword:
@@ -136,6 +142,7 @@ def add_memo(keyword):
         conn.close()
         export_combined_csv()
 
+
 def delete_memo(keyword):
     if keyword:
         conn = sqlite3.connect(DB_FILE)
@@ -145,10 +152,12 @@ def delete_memo(keyword):
         conn.close()
         export_combined_csv()
 
+
 @app.route("/download_all")
 def download_all():
     export_combined_csv()
     return send_file("backup.csv", as_attachment=True)
+
 
 @app.route("/upload_all", methods=["GET", "POST"])
 def upload_all():
@@ -165,6 +174,10 @@ def upload_all():
                 df_all = pd.read_csv("uploaded_backup.csv", encoding=detected_encoding)
             except Exception:
                 df_all = pd.read_csv("uploaded_backup.csv", encoding="utf-8-sig")
+
+            # ✅ 안전: table 컬럼 없으면 에러 메시지
+            if "table" not in df_all.columns:
+                return "❌ Error: This CSV does not have a 'table' column. Use the combined backup only."
 
             df_history = df_all[df_all["table"] == "history"].drop(columns=["table"])
             df_memos = df_all[df_all["table"] == "memos"][["keyword"]].drop_duplicates()
@@ -183,6 +196,7 @@ def upload_all():
             <input type="submit" value="Upload">
         </form>
     '''
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
