@@ -1,44 +1,63 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <title>Keyword Manager Web</title>
-    <style>
-        body { background: #111; color: #0f0; font-family: sans-serif; padding: 20px; }
-        input, button, select { padding: 5px; margin: 5px; }
-        .log { background: #222; padding: 10px; margin-top: 10px; white-space: pre-wrap; }
-    </style>
+  <meta charset="UTF-8">
+  <title>Keyword Manager Web</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      background: #111;
+      color: #0f0;
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    input {
+      padding: 10px;
+      font-size: 18px;
+      width: 100%;
+    }
+    button {
+      padding: 10px;
+      font-size: 18px;
+      width: 100%;
+    }
+    .log {
+      background: #222;
+      padding: 10px;
+      margin-top: 20px;
+      white-space: pre-wrap;
+    }
+    ul {
+      margin-top: 20px;
+    }
+  </style>
 </head>
 <body>
-    <h2>Keyword Manager Web</h2>
-    <form method="POST">
-        <input name="keyword" value="{{ keyword }}" placeholder="키워드 입력">
-        <select name="channel">
-            <option value="">채널 선택</option>
-            <option value="지마켓">지마켓</option>
-            <option value="쿠팡">쿠팡</option>
-            <option value="지그재그">지그재그</option>
-            <option value="도매꾹">도매꾹</option>
-            <option value="에이블리">에이블리</option>
-            <option value="4910">4910</option>
-        </select>
-        <button name="action" value="record">📝 기록</button>
-        <button name="action" value="check">🔍 조회</button>
-        <button name="action" value="add_memo">+ 추가</button>
-        <button name="action" value="delete_memo">- 삭제</button>
-    </form>
+  <h2>Keyword Manager Web</h2>
+  <form method="POST">
+    <input name="keyword" value="{{ keyword }}" placeholder="키워드 입력">
+    <button name="action" value="record">📝 기록하기</button>
+    <button name="action" value="check">🔍 조회하기</button>
+    <button name="action" value="add_memo">+ 추가</button>
+    <button name="action" value="delete_memo">- 삭제</button>
+  </form>
 
-    <h4>📌 메모 키워드</h4>
-    <ul>
-        {% for memo in memo_list %}
-        <li>{{ memo }}</li>
-        {% endfor %}
-    </ul>
+  <h4>📌 메모 키워드</h4>
+  <ul>
+    {% for memo in memo_list %}
+      <li>{{ memo }}</li>
+    {% endfor %}
+  </ul>
 
-    <div class="log">
-        {% for line in log %}
-        {{ line }}<br>
-        {% endfor %}
-    </div>
+  <div class="log">
+    {% for line in log %}
+      {{ line }}<br>
+    {% endfor %}
+  </div>
 </body>
 </html>
