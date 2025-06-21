@@ -3,19 +3,23 @@ import sqlite3
 conn = sqlite3.connect("keyword_manager.db")
 cur = conn.cursor()
 
-# 기록 테이블
+# ✅ 이미 있으면 테이블 DROP
+cur.execute("DROP TABLE IF EXISTS history")
+cur.execute("DROP TABLE IF EXISTS memos")
+
+# ✅ 새로 만들기
 cur.execute("""
-CREATE TABLE IF NOT EXISTS history (
+CREATE TABLE history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     keyword TEXT,
     channel TEXT,
+    pc TEXT,
     created_at TEXT
 )
 """)
 
-# 메모 테이블
 cur.execute("""
-CREATE TABLE IF NOT EXISTS memos (
+CREATE TABLE memos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     keyword TEXT UNIQUE
 )
@@ -24,4 +28,4 @@ CREATE TABLE IF NOT EXISTS memos (
 conn.commit()
 conn.close()
 
-print("✅ DB 초기화 완료!")
+print("✅ DB 재생성 완료!")
