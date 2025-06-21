@@ -8,8 +8,6 @@ import os
 app = Flask(__name__)
 
 DB_FILE = "keyword_manager.db"
-
-# KST 타임존
 tz = pytz.timezone("Asia/Seoul")
 
 @app.route("/", methods=["GET", "POST"])
@@ -138,6 +136,26 @@ def download_history():
         return send_file("history.csv", as_attachment=True)
     else:
         return "CSV 파일이 아직 생성되지 않았습니다."
+
+@app.route("/upload", methods=["GET", "POST"])
+def upload_csv():
+    if request.method == "POST":
+        f = request.files["file"]
+        if f and f.filename.endswith(".csv"):
+            f.save("uploaded_history.csv")
+            df = pd.read_csv("uploaded_history.csv")
+            conn = sqlite3.connect(DB_FILE)
+            df.to_sql("history", conn, if_exists="replace", index=False)
+            conn.close()
+            export_history_csv()  # CSV 동기화
+            return "✅ CSV 복원 완료!"
+    return '''
+        <h3 style="color:lime;">📤 CSV 업로드</h3>
+        <form method="POST" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".csv">
+            <input type="submit" value="Upload">
+        </form>
+    '''
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
