@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 import pytz
 import os
+import chardet  # ✅ 추가
 
 app = Flask(__name__)
 
@@ -143,13 +144,16 @@ def upload_csv():
         f = request.files["file"]
         if f and f.filename.endswith(".csv"):
             f.save("uploaded_history.csv")
-            # ✅ 인코딩 지정으로 오류 방지!
-            df = pd.read_csv("uploaded_history.csv", encoding="cp949")
+            # ✅ chardet 로 인코딩 자동 감지!
+            with open("uploaded_history.csv", "rb") as rawdata:
+                result = chardet.detect(rawdata.read())
+                detected_encoding = result['encoding']
+            df = pd.read_csv("uploaded_history.csv", encoding=detected_encoding)
             conn = sqlite3.connect(DB_FILE)
             df.to_sql("history", conn, if_exists="replace", index=False)
             conn.close()
-            export_history_csv()  # 동기화
-            return "✅ CSV 복원 완료!"
+            export_history_csv()
+            return f"✅ CSV 복원 완료! (인코딩: {detected_encoding})"
     return '''
         <h3 style="color:lime;">📤 CSV 업로드</h3>
         <form method="POST" enctype="multipart/form-data">
