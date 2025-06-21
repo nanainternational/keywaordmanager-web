@@ -11,9 +11,8 @@
       background: #111;
       color: #0f0;
       font-family: sans-serif;
-      overflow-x: hidden; /* ✅ 좌우 스크롤 강제 제거 */
+      overflow-x: hidden;
     }
-
     .container {
       display: flex;
       flex-direction: column;
@@ -21,60 +20,52 @@
       padding: 20px;
       box-sizing: border-box;
     }
-
     form {
       display: flex;
       flex-direction: column;
       gap: 10px;
       flex: 1;
-      overflow-y: auto; /* ✅ 세로 스크롤만 */
+      overflow-y: auto;
       overscroll-behavior: contain;
-      max-width: 100%; /* ✅ form 너비 제한 */
+      max-width: 100%;
     }
-
     input {
       padding: 10px;
       font-size: 18px;
       border-radius: 8px;
       border: none;
-      width: auto;         /* ✅ 자동 폭 */
-      max-width: 100%;     /* ✅ 부모 너비 초과 방지 */
+      width: auto;
+      max-width: 100%;
       box-sizing: border-box;
     }
-
     .row {
       display: flex;
       gap: 10px;
-      flex-wrap: wrap; /* ✅ 버튼 줄바꿈 허용 */
+      flex-wrap: wrap;
     }
-
     button {
       padding: 10px;
       font-size: 18px;
       border-radius: 8px;
       border: none;
       cursor: pointer;
-      white-space: nowrap;  /* ✅ 텍스트 줄내림 방지 */
-      flex-shrink: 0;       /* ✅ 크기 줄어들지 않음 */
-      max-width: 100%;      /* ✅ 부모 초과 방지 */
+      white-space: nowrap;
+      flex-shrink: 0;
+      max-width: 100%;
       box-sizing: border-box;
     }
-
     .select-btn {
       background: black;
       color: #0f0;
     }
-
     .select-btn.selected {
       background: #0f0;
       color: #111;
     }
-
     .memo-input {
       margin-bottom: 20px;
       display: block;
     }
-
     .log {
       background: #222;
       border-radius: 8px;
@@ -82,15 +73,20 @@
       margin-top: 20px;
       white-space: pre-wrap;
     }
-
     ul {
       margin-top: 20px;
       padding-left: 20px;
-      word-break: break-all; /* 긴 단어 줄바꿈 */
+      word-break: break-all;
     }
-
     li {
       margin: 5px 0;
+    }
+    /* 다운로드 버튼 스타일 */
+    .download-link {
+      margin-top: 15px;
+      display: inline-block;
+      color: #0f0;
+      text-decoration: underline;
     }
   </style>
 </head>
@@ -132,6 +128,9 @@
           {{ line }}<br />
         {% endfor %}
       </div>
+
+      <!-- ✅ 📥 CSV 다운로드 링크 추가 -->
+      <a href="/download" class="download-link">📥 기록 CSV 다운로드</a>
 
       <!-- ✅ 메모 기능 -->
       <div>
