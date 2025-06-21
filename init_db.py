@@ -3,7 +3,7 @@ import sqlite3
 conn = sqlite3.connect("keyword_manager.db")
 cur = conn.cursor()
 
-# ✅ Drop 제거 → 데이터 유지
+# ✅ history 테이블 (PC 컬럼 포함)
 cur.execute("""
 CREATE TABLE IF NOT EXISTS history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS history (
 )
 """)
 
+# ✅ memos 테이블
 cur.execute("""
 CREATE TABLE IF NOT EXISTS memos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,4 +25,4 @@ CREATE TABLE IF NOT EXISTS memos (
 conn.commit()
 conn.close()
 
-print("✅ DB 구조 확인 완료 (데이터 유지 모드)")
+print("✅ DB 구조 확인 완료 (데이터 유지)")
