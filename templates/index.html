@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Keyword Manager Web</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
       background: #111;
@@ -20,14 +20,36 @@
       padding: 10px;
       font-size: 18px;
       width: 100%;
+      border-radius: 8px;
+      border: none;
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
     }
     button {
       padding: 10px;
       font-size: 18px;
-      width: 100%;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+    }
+    .select-btn {
+      background: black;
+      color: #0f0;
+    }
+    .select-btn.selected {
+      background: #0f0;
+      color: #111;
+    }
+    .memo-input {
+      margin-bottom: 20px;
+      display: block;
     }
     .log {
       background: #222;
+      border-radius: 8px;
       padding: 10px;
       margin-top: 20px;
       white-space: pre-wrap;
@@ -40,24 +62,76 @@
 <body>
   <h2>Keyword Manager Web</h2>
   <form method="POST">
-    <input name="keyword" value="{{ keyword }}" placeholder="키워드 입력">
-    <button name="action" value="record">📝 기록하기</button>
-    <button name="action" value="check">🔍 조회하기</button>
-    <button name="action" value="add_memo">+ 추가</button>
-    <button name="action" value="delete_memo">- 삭제</button>
+    <!-- ✅ 키워드 입력 -->
+    <input name="keyword" value="{{ keyword }}" placeholder="키워드 입력" />
+
+    <!-- ✅ 채널 선택: 하드코딩 -->
+    <h4>📡 채널 선택</h4>
+    <div class="row" id="channel-buttons">
+      <button type="button" class="select-btn" onclick="selectOption('channel', '지마켓', this)">지마켓</button>
+      <button type="button" class="select-btn" onclick="selectOption('channel', '쿠팡', this)">쿠팡</button>
+      <button type="button" class="select-btn" onclick="selectOption('channel', '지그재그', this)">지그재그</button>
+      <button type="button" class="select-btn" onclick="selectOption('channel', '도매꾹', this)">도매꾹</button>
+      <button type="button" class="select-btn" onclick="selectOption('channel', '에이블리', this)">에이블리</button>
+      <button type="button" class="select-btn" onclick="selectOption('channel', '4910', this)">4910</button>
+    </div>
+
+    <!-- ✅ PC 선택: 하드코딩 -->
+    <h4>💻 PC 선택</h4>
+    <div class="row" id="pc-buttons">
+      <button type="button" class="select-btn" onclick="selectOption('pc', 'Lenovo', this)">Lenovo</button>
+      <button type="button" class="select-btn" onclick="selectOption('pc', 'HP', this)">HP</button>
+      <button type="button" class="select-btn" onclick="selectOption('pc', 'Razer', this)">Razer</button>
+    </div>
+
+    <!-- ✅ 기록/조회 한줄 -->
+    <div class="row">
+      <button name="action" value="record">📝 기록하기</button>
+      <button name="action" value="check">🔍 조회하기</button>
+    </div>
+
+    <!-- ✅ 로그 박스: 메모 기능 위로 이동 -->
+    <div class="log">
+      {% for line in log %}
+        {{ line }}<br />
+      {% endfor %}
+    </div>
+
+    <!-- ✅ 메모 기능: 테두리 제거 -->
+    <div>
+      <h4>🗂️ 메모 기능</h4>
+      <input class="memo-input" name="memo_keyword" placeholder="메모할 키워드 입력" />
+
+      <div class="row">
+        <button name="action" value="add_memo">+ 추가</button>
+        <button name="action" value="delete_memo">- 삭제</button>
+      </div>
+
+      <h4>📌 메모 키워드</h4>
+      <ul>
+        {% for memo in memo_list %}
+          <li>{{ memo }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <!-- ✅ 선택값 숨은필드 -->
+    <input type="hidden" name="selected_channel" id="selected_channel">
+    <input type="hidden" name="selected_pc" id="selected_pc">
   </form>
 
-  <h4>📌 메모 키워드</h4>
-  <ul>
-    {% for memo in memo_list %}
-      <li>{{ memo }}</li>
-    {% endfor %}
-  </ul>
-
-  <div class="log">
-    {% for line in log %}
-      {{ line }}<br>
-    {% endfor %}
-  </div>
+  <!-- ✅ 선택 처리 JS -->
+  <script>
+    function selectOption(type, value, btn) {
+      if (type === 'channel') {
+        document.getElementById('selected_channel').value = value;
+        document.querySelectorAll('#channel-buttons .select-btn').forEach(b => b.classList.remove('selected'));
+      } else {
+        document.getElementById('selected_pc').value = value;
+        document.querySelectorAll('#pc-buttons .select-btn').forEach(b => b.classList.remove('selected'));
+      }
+      btn.classList.add('selected');
+    }
+  </script>
 </body>
 </html>
