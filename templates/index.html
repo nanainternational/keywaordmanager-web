@@ -11,39 +11,7 @@
       background: #111;
       color: #0f0;
       font-family: sans-serif;
-      overflow: hidden; /* 중복 스크롤 방지 */
-    }
-
-    form {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    input, button {
-      padding: 10px;
-      font-size: 18px;
-      width: 100%;
-      border-radius: 8px;
-    }
-
-    .log-area {
-      flex: 1;
-      overflow-y: auto;
-      background: #222;
-      padding: 10px;
-      margin-top: 20px;
-      white-space: pre-wrap;
-      overscroll-behavior: contain; /* 덜덜방지 */
-    }
-
-    .memo-area {
-      flex: 1;
-      overflow-y: auto;
-      background: #222;
-      padding: 10px;
-      margin-top: 20px;
-      overscroll-behavior: contain; /* 덜덜방지 */
+      overflow: hidden;
     }
 
     .container {
@@ -54,13 +22,64 @@
       box-sizing: border-box;
     }
 
-    .button-row {
+    form {
       display: flex;
+      flex-direction: column;
       gap: 10px;
     }
 
+    input, button {
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 8px;
+      width: 100%;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .selector-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 10px 0;
+    }
+
+    .selector-button {
+      padding: 8px 12px;
+      background: #000;
+      color: #0f0;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .selector-button.selected {
+      background: #0f0;
+      color: #000;
+    }
+
+    .memo-area, .log-area {
+      flex: 1;
+      overflow-y: auto;
+      background: #222;
+      padding: 10px;
+      margin-top: 15px;
+      overscroll-behavior: contain;
+      border-radius: 8px;
+    }
+
     ul {
-      margin-top: 20px;
+      margin: 0;
+      padding: 0;
+    }
+
+    li {
+      list-style: none;
+      margin: 5px 0;
     }
   </style>
 </head>
@@ -69,21 +88,38 @@
     <h2>Keyword Manager Web</h2>
     <form method="POST">
       <input name="keyword" value="{{ keyword }}" placeholder="키워드 입력" />
-      
-      <!-- 버튼 한줄 -->
+
+      <!-- ✅ 채널 선택 -->
+      <div><strong>채널 선택:</strong></div>
+      <div class="selector-row">
+        {% for channel in channels %}
+          <button type="submit" name="selected_channel" value="{{ channel }}" class="selector-button {% if channel == selected_channel %}selected{% endif %}">{{ channel }}</button>
+        {% endfor %}
+      </div>
+
+      <!-- ✅ PC 선택 -->
+      <div><strong>PC 선택:</strong></div>
+      <div class="selector-row">
+        {% for pc in pcs %}
+          <button type="submit" name="selected_pc" value="{{ pc }}" class="selector-button {% if pc == selected_pc %}selected{% endif %}">{{ pc }}</button>
+        {% endfor %}
+      </div>
+
+      <!-- ✅ 기록 & 조회 -->
       <div class="button-row">
         <button type="submit" name="action" value="record">📝 기록하기</button>
         <button type="submit" name="action" value="check">🔍 조회하기</button>
       </div>
 
-      <!-- 추가/삭제 버튼 한줄 -->
+      <!-- ✅ 메모 추가/삭제 -->
+      <input name="memo_keyword" placeholder="메모할 키워드 입력" />
       <div class="button-row">
         <button type="submit" name="action" value="add_memo">+ 추가</button>
         <button type="submit" name="action" value="delete_memo">- 삭제</button>
       </div>
     </form>
 
-    <!-- 메모 리스트 -->
+    <!-- ✅ 메모 리스트 -->
     <h4>📌 메모 키워드</h4>
     <div class="memo-area">
       <ul>
@@ -93,7 +129,8 @@
       </ul>
     </div>
 
-    <!-- 로그 영역 -->
+    <!-- ✅ 로그 -->
+    <h4>📑 로그</h4>
     <div class="log-area">
       {% for line in log %}
         {{ line }}<br>
