@@ -11,7 +11,7 @@
       background: #111;
       color: #0f0;
       font-family: sans-serif;
-      overflow: hidden; /* 중복 스크롤 제거 */
+      overflow-x: hidden; /* ✅ 좌우 스크롤 강제 제거 */
     }
 
     .container {
@@ -27,22 +27,25 @@
       flex-direction: column;
       gap: 10px;
       flex: 1;
-      overflow-y: auto; /* 메인 영역만 스크롤 허용 */
-      overscroll-behavior: contain; /* 덜덜 방지 */
+      overflow-y: auto; /* ✅ 세로 스크롤만 */
+      overscroll-behavior: contain;
+      max-width: 100%; /* ✅ form 너비 제한 */
     }
 
     input {
       padding: 10px;
       font-size: 18px;
-      width: 100%;
       border-radius: 8px;
       border: none;
+      width: auto;         /* ✅ 자동 폭 */
+      max-width: 100%;     /* ✅ 부모 너비 초과 방지 */
+      box-sizing: border-box;
     }
 
     .row {
       display: flex;
       gap: 10px;
-      flex-wrap: wrap;
+      flex-wrap: wrap; /* ✅ 버튼 줄바꿈 허용 */
     }
 
     button {
@@ -51,6 +54,10 @@
       border-radius: 8px;
       border: none;
       cursor: pointer;
+      white-space: nowrap;  /* ✅ 텍스트 줄내림 방지 */
+      flex-shrink: 0;       /* ✅ 크기 줄어들지 않음 */
+      max-width: 100%;      /* ✅ 부모 초과 방지 */
+      box-sizing: border-box;
     }
 
     .select-btn {
@@ -78,6 +85,12 @@
 
     ul {
       margin-top: 20px;
+      padding-left: 20px;
+      word-break: break-all; /* 긴 단어 줄바꿈 */
+    }
+
+    li {
+      margin: 5px 0;
     }
   </style>
 </head>
@@ -107,7 +120,7 @@
         <button type="button" class="select-btn" onclick="selectOption('pc', 'Razer', this)">Razer</button>
       </div>
 
-      <!-- ✅ 기록/조회 -->
+      <!-- ✅ 기록/조회 버튼 -->
       <div class="row">
         <button name="action" value="record">📝 기록하기</button>
         <button name="action" value="check">🔍 조회하기</button>
