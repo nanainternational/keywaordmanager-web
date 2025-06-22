@@ -71,8 +71,8 @@
       border-radius: 8px;
       padding: 10px;
       margin-top: 20px;
-      text-align: left; /* ✅ 좌측정렬 */
-      line-height: 1.05; /* ✅ 최대한 촘촘한 줄간격 */
+      text-align: left;
+      line-height: 1.05;
       white-space: pre-wrap;
     }
     ul {
@@ -91,7 +91,7 @@
       background: #222;
       color: #0f0;
       border: none;
-      padding: 5px 10px;
+      padding: 8px 12px;
       border-radius: 5px;
       cursor: pointer;
     }
@@ -100,12 +100,29 @@
       color: #111;
     }
 
+    .history-item {
+      background: #222;
+      color: #0f0;
+      padding: 8px 12px;
+      border-radius: 5px;
+      display: inline-flex;
+      align-items: center;
+    }
+    .history-item .delete-x {
+      margin-left: 10px;
+      background: transparent;
+      color: #f00;
+      border: none;
+      cursor: pointer;
+      font-size: 1em;
+    }
+
     .download-link {
       margin-top: 30px;
       display: inline-block;
       color: #0f0;
       text-decoration: underline;
-      font-size: 0.8em; /* 폰트 작게 */
+      font-size: 0.8em;
     }
   </style>
 </head>
@@ -141,41 +158,50 @@
         <button name="action" value="check">🔍 조회하기</button>
       </div>
 
-      <!-- 로그 (Whitespace Control 적용) -->
+      <!-- 로그 -->
       <div class="log">
         {% for line in log -%}
           <div>{{ line }}</div>
         {%- endfor %}
       </div>
 
+      <!-- 📑 기록 이력 -->
+      <h4>📑 기록 이력</h4>
+      <ul id="history-list">
+        {% for item in history_list %}
+          <li class="history-item">
+            <span>{{ item.keyword }} | {{ item.channel }} | {{ item.pc }} | {{ item.created_at }}</span>
+            <button type="button" class="delete-x" onclick="deleteHistory('{{ item.id }}', this)">❌</button>
+          </li>
+        {% endfor %}
+      </ul>
+
       <!-- 메모 기능 -->
-      <div>
-        <h4>🗂️ 메모 기능</h4>
-        <input class="memo-input" name="memo_keyword" placeholder="메모할 키워드 입력" />
+      <h4>🗂️ 메모 기능</h4>
+      <input class="memo-input" name="memo_keyword" placeholder="메모할 키워드 입력" />
 
-        <div class="row">
-          <button name="action" value="add_memo">+ 추가</button>
-          <button name="action" value="delete_memo">- 삭제</button>
-        </div>
-
-        <h4>📌 메모 키워드</h4>
-        <ul id="memo-list">
-          {% for memo in memo_list %}
-            <li><button type="button" onclick="selectMemo(this)">{{ memo }}</button></li>
-          {% endfor %}
-        </ul>
+      <div class="row">
+        <button name="action" value="add_memo">+ 추가</button>
+        <button name="action" value="delete_memo">- 삭제</button>
       </div>
+
+      <h4>📌 메모 키워드</h4>
+      <ul id="memo-list">
+        {% for memo in memo_list %}
+          <li><button type="button" onclick="selectMemo(this)">{{ memo }}</button></li>
+        {% endfor %}
+      </ul>
 
       <!-- 선택값 hidden -->
       <input type="hidden" name="selected_channel" id="selected_channel">
       <input type="hidden" name="selected_pc" id="selected_pc">
 
-      <!-- CSV 다운로드 링크 (최하단) -->
+      <!-- CSV 다운로드 링크 -->
       <a href="/download_all" class="download-link">📥 기록 CSV 다운로드</a>
     </form>
   </div>
 
-  <!-- 선택 처리 JS -->
+  <!-- JS -->
   <script>
     function selectOption(type, value, btn) {
       if (type === 'channel') {
@@ -192,6 +218,18 @@
       document.querySelectorAll('#memo-list button').forEach(b => b.classList.remove('selected'));
       btn.classList.add('selected');
       document.querySelector('.memo-input').value = btn.innerText;
+    }
+
+    function deleteHistory(id, el) {
+      fetch('/delete_history', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id: id })
+      }).then(res => res.json()).then(data => {
+        if (data.status === "ok") {
+          el.closest('li').remove();
+        }
+      });
     }
   </script>
 </body>

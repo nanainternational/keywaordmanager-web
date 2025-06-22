@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request, send_file, jsonify
 import sqlite3
 import pandas as pd
 from datetime import datetime
@@ -20,6 +20,7 @@ def index():
     selected_pc = request.form.get("selected_pc", "")
 
     memo_list = load_memo_list()
+    history_list = load_history_list()
 
     if request.method == "POST":
         action = request.form.get("action")
@@ -30,6 +31,7 @@ def index():
             log = record_keyword(keyword, selected_channel, selected_pc)
         elif action == "check":
             log = check_history(keyword)
+            history_list = load_history_list(keyword)
         elif action == "add_memo":
             add_memo(memo_keyword)
             memo_list = load_memo_list()
@@ -44,10 +46,32 @@ def index():
                            keyword=keyword,
                            log=log,
                            memo_list=memo_list,
+                           history_list=history_list,
                            channels=channels,
                            pcs=pcs,
                            selected_channel=selected_channel,
                            selected_pc=selected_pc)
+
+
+@app.route("/delete_history", methods=["POST"])
+def delete_history():
+    history_id = request.json.get("id")
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM history WHERE id=?", (history_id,))
+    conn.commit()
+    conn.close()
+    export_combined_csv()
+    return jsonify({"status": "ok"})
+
+
+def load_history_list(keyword=None):
+    conn = sqlite3.connect(DB_FILE)
+    df = pd.read_sql_query("SELECT * FROM history ORDER BY id DESC", conn)
+    conn.close()
+    if keyword:
+        df = df[df['keyword'] == keyword]
+    return df.to_dict(orient="records")
 
 
 def record_keyword(keyword, channel, pc):
@@ -73,7 +97,7 @@ def record_keyword(keyword, channel, pc):
     if duplicate:
         logs.append(f"⚠️ 이미 기록됨")
     else:
-        now = datetime.now(tz).strftime("%Y-%m-%d")  # ✅ 시각 제거: 날짜만 저장
+        now = datetime.now(tz).strftime("%Y-%m-%d")
         cur.execute("""
             INSERT INTO history (keyword, channel, pc, created_at) VALUES (?, ?, ?, ?)
         """, (keyword, channel, pc, now))
@@ -97,7 +121,6 @@ def check_history(keyword):
     if not df.empty:
         logs.append(f"🔍 이력 {len(df)}건:")
         for _, row in df.iterrows():
-            # ✅ 이미 저장된 created_at 은 날짜만
             logs.append(f"📌 {row['keyword']} | {row['channel']} | {row['pc']} | {row['created_at']}")
     else:
         logs.append("ℹ️ 이력이 없습니다.")
@@ -155,44 +178,6 @@ def delete_memo(keyword):
 def download_all():
     export_combined_csv()
     return send_file("backup.csv", as_attachment=True)
-
-
-@app.route("/upload_all", methods=["GET", "POST"])
-def upload_all():
-    if request.method == "POST":
-        f = request.files["file"]
-        if f and f.filename.endswith(".csv"):
-            f.save("uploaded_backup.csv")
-
-            with open("uploaded_backup.csv", "rb") as rawdata:
-                result = chardet.detect(rawdata.read())
-                detected_encoding = result['encoding']
-
-            try:
-                df_all = pd.read_csv("uploaded_backup.csv", encoding=detected_encoding)
-            except Exception:
-                df_all = pd.read_csv("uploaded_backup.csv", encoding="utf-8-sig")
-
-            if "table" not in df_all.columns:
-                return "❌ Error: This CSV does not have a 'table' column. Use the combined backup only."
-
-            df_history = df_all[df_all["table"] == "history"].drop(columns=["table"])
-            df_memos = df_all[df_all["table"] == "memos"][["keyword"]].drop_duplicates()
-
-            conn = sqlite3.connect(DB_FILE)
-            df_history.to_sql("history", conn, if_exists="replace", index=False)
-            df_memos.to_sql("memos", conn, if_exists="replace", index=False)
-            conn.close()
-
-            export_combined_csv()
-            return f"✅ 통합 CSV 복원 완료! (인코딩: {detected_encoding})"
-    return '''
-        <h3 style="color:lime;">📤 통합 CSV 업로드</h3>
-        <form method="POST" enctype="multipart/form-data">
-            <input type="file" name="file" accept=".csv">
-            <input type="submit" value="Upload">
-        </form>
-    '''
 
 
 if __name__ == "__main__":
