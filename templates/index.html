@@ -26,7 +26,6 @@
       gap: 10px;
       flex: 1;
       overflow-y: auto;
-      overscroll-behavior: contain;
       max-width: 100%;
     }
     input {
@@ -165,17 +164,22 @@
         {%- endfor %}
       </div>
 
-      <!-- 📑 기록 이력: 키워드 없을 때만 출력 -->
-      {% if not keyword %}
-        <h4>📑 기록 이력</h4>
-        <ul id="history-list">
-          {% for item in history_list %}
-            <li class="history-item">
-              <span>{{ item.keyword }} | {{ item.channel }} | {{ item.pc }} | {{ item.created_at }}</span>
-              <button type="button" class="delete-x" onclick="deleteHistory('{{ item.id }}', this)">❌</button>
-            </li>
-          {% endfor %}
-        </ul>
+      <!-- 📑 기록 이력: 조회 시 & 접기/펼치기 -->
+      {% if show_history %}
+        <h4>
+          📑 기록 이력 
+          <button type="button" onclick="toggleHistory()" style="margin-left:10px;">📂 접기/펼치기</button>
+        </h4>
+        <div id="history-section" style="display: none;">
+          <ul id="history-list">
+            {% for item in history_list %}
+              <li class="history-item">
+                <span>{{ item.keyword }} | {{ item.channel }} | {{ item.pc }} | {{ item.created_at }}</span>
+                <button type="button" class="delete-x" onclick="deleteHistory('{{ item.id }}', this)">❌</button>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
       {% endif %}
 
       <!-- 메모 기능 -->
@@ -232,6 +236,11 @@
           el.closest('li').remove();
         }
       });
+    }
+
+    function toggleHistory() {
+      const section = document.getElementById('history-section');
+      section.style.display = (section.style.display === 'none') ? 'block' : 'none';
     }
   </script>
 </body>

@@ -22,6 +22,9 @@ def index():
     memo_list = load_memo_list()
     history_list = load_history_list()
 
+    # ✅ 기본: 기록 이력 숨김
+    show_history = False
+
     if request.method == "POST":
         action = request.form.get("action")
         keyword = request.form.get("keyword", "").strip()
@@ -31,6 +34,9 @@ def index():
             log = record_keyword(keyword, selected_channel, selected_pc)
         elif action == "check":
             log = check_history(keyword)
+            # ✅ 키워드 없으면 전체 이력 출력 ON
+            if not keyword:
+                show_history = True
         elif action == "add_memo":
             add_memo(memo_keyword)
             memo_list = load_memo_list()
@@ -41,15 +47,18 @@ def index():
     channels = ["지마켓", "쿠팡", "지그재그", "도매꾹", "에이블리", "4910"]
     pcs = ["Lenovo", "HP", "Razer"]
 
-    return render_template("index.html",
-                           keyword=keyword,
-                           log=log,
-                           memo_list=memo_list,
-                           history_list=history_list,
-                           channels=channels,
-                           pcs=pcs,
-                           selected_channel=selected_channel,
-                           selected_pc=selected_pc)
+    return render_template(
+        "index.html",
+        keyword=keyword,
+        log=log,
+        memo_list=memo_list,
+        history_list=history_list,
+        channels=channels,
+        pcs=pcs,
+        selected_channel=selected_channel,
+        selected_pc=selected_pc,
+        show_history=show_history
+    )
 
 
 def record_keyword(keyword, channel, pc):
