@@ -31,7 +31,6 @@ def index():
             log = record_keyword(keyword, selected_channel, selected_pc)
         elif action == "check":
             log = check_history(keyword)
-            history_list = load_history_list(keyword)
         elif action == "add_memo":
             add_memo(memo_keyword)
             memo_list = load_memo_list()
@@ -53,27 +52,6 @@ def index():
                            selected_pc=selected_pc)
 
 
-@app.route("/delete_history", methods=["POST"])
-def delete_history():
-    history_id = request.json.get("id")
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("DELETE FROM history WHERE id=?", (history_id,))
-    conn.commit()
-    conn.close()
-    export_combined_csv()
-    return jsonify({"status": "ok"})
-
-
-def load_history_list(keyword=None):
-    conn = sqlite3.connect(DB_FILE)
-    df = pd.read_sql_query("SELECT * FROM history ORDER BY id DESC", conn)
-    conn.close()
-    if keyword:
-        df = df[df['keyword'] == keyword]
-    return df.to_dict(orient="records")
-
-
 def record_keyword(keyword, channel, pc):
     logs = []
     if not keyword:
@@ -88,7 +66,11 @@ def record_keyword(keyword, channel, pc):
 
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
-
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS history (
+            keyword TEXT, channel TEXT, pc TEXT, created_at TEXT
+        )
+    """)
     cur.execute("""
         SELECT * FROM history WHERE keyword=? AND channel=?
     """, (keyword, channel))
@@ -112,7 +94,7 @@ def record_keyword(keyword, channel, pc):
 def check_history(keyword):
     logs = []
     conn = sqlite3.connect(DB_FILE)
-    df = pd.read_sql_query("SELECT * FROM history", conn)
+    df = pd.read_sql_query("SELECT rowid AS id, * FROM history", conn)
     conn.close()
 
     if keyword:
@@ -121,7 +103,7 @@ def check_history(keyword):
     if not df.empty:
         logs.append(f"🔍 이력 {len(df)}건:")
         for _, row in df.iterrows():
-            logs.append(f"📌 {row['keyword']} | {row['channel']} | {row['pc']} | {row['created_at']}")
+            logs.append(f"  📌 {row['keyword']} | {row['channel']} | {row['pc']} | {row['created_at']}")
     else:
         logs.append("ℹ️ 이력이 없습니다.")
     return logs
@@ -148,10 +130,21 @@ def export_combined_csv():
 def load_memo_list():
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
+    cur.execute("CREATE TABLE IF NOT EXISTS memos (keyword TEXT UNIQUE)")
     cur.execute("SELECT keyword FROM memos")
     memos = [row[0] for row in cur.fetchall()]
     conn.close()
     return memos
+
+
+def load_history_list():
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute("SELECT rowid AS id, * FROM history")
+    rows = [{"id": row[0], "keyword": row[1], "channel": row[2], "pc": row[3], "created_at": row[4]}
+            for row in cur.fetchall()]
+    conn.close()
+    return rows
 
 
 def add_memo(keyword):
@@ -174,10 +167,62 @@ def delete_memo(keyword):
         export_combined_csv()
 
 
+@app.route("/delete_history", methods=["POST"])
+def delete_history():
+    data = request.get_json()
+    row_id = data.get("id")
+    if row_id:
+        conn = sqlite3.connect(DB_FILE)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM history WHERE rowid=?", (row_id,))
+        conn.commit()
+        conn.close()
+        export_combined_csv()
+        return {"status": "ok"}
+    else:
+        return {"status": "error"}
+
+
 @app.route("/download_all")
 def download_all():
     export_combined_csv()
     return send_file("backup.csv", as_attachment=True)
+
+
+@app.route("/upload_all", methods=["GET", "POST"])
+def upload_all():
+    if request.method == "POST":
+        f = request.files["file"]
+        if f and f.filename.endswith(".csv"):
+            f.save("uploaded_backup.csv")
+            with open("uploaded_backup.csv", "rb") as rawdata:
+                result = chardet.detect(rawdata.read())
+                detected_encoding = result['encoding']
+            try:
+                df_all = pd.read_csv("uploaded_backup.csv", encoding=detected_encoding)
+            except Exception:
+                df_all = pd.read_csv("uploaded_backup.csv", encoding="utf-8-sig")
+
+            if "table" not in df_all.columns:
+                return "❌ Error: This CSV does not have a 'table' column. Use the combined backup only."
+
+            df_history = df_all[df_all["table"] == "history"].drop(columns=["table"])
+            df_memos = df_all[df_all["table"] == "memos"][["keyword"]].drop_duplicates()
+
+            conn = sqlite3.connect(DB_FILE)
+            df_history.to_sql("history", conn, if_exists="replace", index=False)
+            df_memos.to_sql("memos", conn, if_exists="replace", index=False)
+            conn.close()
+
+            export_combined_csv()
+            return f"✅ 통합 CSV 복원 완료! (인코딩: {detected_encoding})"
+    return '''
+        <h3 style="color:lime;">📤 통합 CSV 업로드</h3>
+        <form method="POST" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".csv">
+            <input type="submit" value="Upload">
+        </form>
+    '''
 
 
 if __name__ == "__main__":
