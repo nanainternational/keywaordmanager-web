@@ -33,11 +33,9 @@ def index():
         elif action == "add_memo":
             add_memo(memo_keyword)
             memo_list = load_memo_list()
-            # log.append(...) 제거: 메모 추가 로그 안찍음
         elif action == "delete_memo":
             delete_memo(memo_keyword)
             memo_list = load_memo_list()
-            # log.append(...) 제거: 메모 삭제 로그 안찍음
 
     channels = ["지마켓", "쿠팡", "지그재그", "도매꾹", "에이블리", "4910"]
     pcs = ["Lenovo", "HP", "Razer"]
@@ -75,7 +73,7 @@ def record_keyword(keyword, channel, pc):
     if duplicate:
         logs.append(f"⚠️ 이미 기록됨")
     else:
-        now = datetime.now(tz).strftime("%Y-%m-%d")  # ✅ 날짜만 기록
+        now = datetime.now(tz).strftime("%Y-%m-%d")  # ✅ 시각 제거: 날짜만 저장
         cur.execute("""
             INSERT INTO history (keyword, channel, pc, created_at) VALUES (?, ?, ?, ?)
         """, (keyword, channel, pc, now))
@@ -99,7 +97,7 @@ def check_history(keyword):
     if not df.empty:
         logs.append(f"🔍 이력 {len(df)}건:")
         for _, row in df.iterrows():
-            # ✅ created_at은 날짜만 출력
+            # ✅ 이미 저장된 created_at 은 날짜만
             logs.append(f"📌 {row['keyword']} | {row['channel']} | {row['pc']} | {row['created_at']}")
     else:
         logs.append("ℹ️ 이력이 없습니다.")
@@ -108,10 +106,9 @@ def check_history(keyword):
 
 def export_combined_csv():
     conn = sqlite3.connect(DB_FILE)
-    # history
     df_history = pd.read_sql_query("SELECT * FROM history", conn)
     df_history.insert(0, "table", "history")
-    # memos
+
     df_memos = pd.read_sql_query("SELECT keyword FROM memos", conn)
     df_memos["table"] = "memos"
     df_memos["channel"] = None

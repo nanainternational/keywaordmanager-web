@@ -72,7 +72,7 @@
       padding: 10px;
       margin-top: 20px;
       text-align: left; /* ✅ 좌측정렬 */
-      line-height: 1.4; /* ✅ 촘촘한 줄간격 */
+      line-height: 1.2; /* ✅ 줄간격 더 좁게 */
       white-space: pre-wrap;
     }
     ul {
@@ -113,10 +113,10 @@
   <div class="container">
     <h2>Keyword Manager Web</h2>
     <form method="POST">
-      <!-- ✅ 키워드 입력 -->
+      <!-- 키워드 입력 -->
       <input name="keyword" value="{{ keyword }}" placeholder="키워드 입력" />
 
-      <!-- ✅ 채널 선택 -->
+      <!-- 채널 선택 -->
       <h4>📡 채널 선택</h4>
       <div class="row" id="channel-buttons">
         <button type="button" class="select-btn" onclick="selectOption('channel', '지마켓', this)">지마켓</button>
@@ -127,7 +127,7 @@
         <button type="button" class="select-btn" onclick="selectOption('channel', '4910', this)">4910</button>
       </div>
 
-      <!-- ✅ PC 선택 -->
+      <!-- PC 선택 -->
       <h4>💻 PC 선택</h4>
       <div class="row" id="pc-buttons">
         <button type="button" class="select-btn" onclick="selectOption('pc', 'Lenovo', this)">Lenovo</button>
@@ -135,20 +135,20 @@
         <button type="button" class="select-btn" onclick="selectOption('pc', 'Razer', this)">Razer</button>
       </div>
 
-      <!-- ✅ 기록/조회 버튼 -->
+      <!-- 기록/조회 버튼 -->
       <div class="row">
         <button name="action" value="record">📝 기록하기</button>
         <button name="action" value="check">🔍 조회하기</button>
       </div>
 
-      <!-- ✅ 로그 -->
+      <!-- 로그 -->
       <div class="log">
         {% for line in log %}
           <div>{{ line }}</div>
         {% endfor %}
       </div>
 
-      <!-- ✅ 메모 기능 -->
+      <!-- 메모 기능 -->
       <div>
         <h4>🗂️ 메모 기능</h4>
         <input class="memo-input" name="memo_keyword" placeholder="메모할 키워드 입력" />
@@ -166,16 +166,16 @@
         </ul>
       </div>
 
-      <!-- ✅ 선택값 hidden -->
+      <!-- 선택값 hidden -->
       <input type="hidden" name="selected_channel" id="selected_channel">
       <input type="hidden" name="selected_pc" id="selected_pc">
 
-      <!-- ✅ CSV 다운로드 버튼 (최하단, 경로 수정, 작게) -->
+      <!-- CSV 다운로드 링크 (최하단) -->
       <a href="/download_all" class="download-link">📥 기록 CSV 다운로드</a>
     </form>
   </div>
 
-  <!-- ✅ 선택 처리 JS -->
+  <!-- 선택 처리 JS -->
   <script>
     function selectOption(type, value, btn) {
       if (type === 'channel') {
