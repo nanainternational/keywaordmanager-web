@@ -33,7 +33,7 @@ def index():
             log = record_keyword(keyword, selected_channel, selected_pc)
         elif action == "check":
             if keyword.lower() == "all":
-                log = check_history("")
+                log = []  # ✅ 로그에는 안 찍힘
                 show_history = True
             else:
                 log = check_history(keyword)
