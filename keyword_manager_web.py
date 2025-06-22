@@ -33,11 +33,11 @@ def index():
         elif action == "add_memo":
             add_memo(memo_keyword)
             memo_list = load_memo_list()
-            log.append(f"➕ 메모 추가: {memo_keyword}")
+            # log.append(...) 제거: 메모 추가 로그 안찍음
         elif action == "delete_memo":
             delete_memo(memo_keyword)
             memo_list = load_memo_list()
-            log.append(f"❌ 메모 삭제: {memo_keyword}")
+            # log.append(...) 제거: 메모 삭제 로그 안찍음
 
     channels = ["지마켓", "쿠팡", "지그재그", "도매꾹", "에이블리", "4910"]
     pcs = ["Lenovo", "HP", "Razer"]
@@ -75,7 +75,7 @@ def record_keyword(keyword, channel, pc):
     if duplicate:
         logs.append(f"⚠️ 이미 기록됨")
     else:
-        now = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now(tz).strftime("%Y-%m-%d")  # ✅ 날짜만 기록
         cur.execute("""
             INSERT INTO history (keyword, channel, pc, created_at) VALUES (?, ?, ?, ?)
         """, (keyword, channel, pc, now))
@@ -99,7 +99,8 @@ def check_history(keyword):
     if not df.empty:
         logs.append(f"🔍 이력 {len(df)}건:")
         for _, row in df.iterrows():
-            logs.append(f"  📌 {row['keyword']} | {row['channel']} | {row['pc']} | {row['created_at']}")
+            # ✅ created_at은 날짜만 출력
+            logs.append(f"📌 {row['keyword']} | {row['channel']} | {row['pc']} | {row['created_at']}")
     else:
         logs.append("ℹ️ 이력이 없습니다.")
     return logs
@@ -175,7 +176,6 @@ def upload_all():
             except Exception:
                 df_all = pd.read_csv("uploaded_backup.csv", encoding="utf-8-sig")
 
-            # ✅ 안전: table 컬럼 없으면 에러 메시지
             if "table" not in df_all.columns:
                 return "❌ Error: This CSV does not have a 'table' column. Use the combined backup only."
 

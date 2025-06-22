@@ -71,6 +71,8 @@
       border-radius: 8px;
       padding: 10px;
       margin-top: 20px;
+      text-align: left; /* ✅ 좌측정렬 */
+      line-height: 1.4; /* ✅ 촘촘한 줄간격 */
       white-space: pre-wrap;
     }
     ul {
@@ -85,7 +87,6 @@
     li {
       margin: 0;
     }
-    /* 메모 키워드 버튼 스타일 */
     #memo-list button {
       background: #222;
       color: #0f0;
@@ -99,13 +100,12 @@
       color: #111;
     }
 
-    /* 다운로드 버튼 스타일 + 폰트 축소 */
     .download-link {
       margin-top: 30px;
       display: inline-block;
       color: #0f0;
       text-decoration: underline;
-      font-size: 0.8em; /* 폰트 2단계 작게 */
+      font-size: 0.8em; /* 폰트 작게 */
     }
   </style>
 </head>
@@ -144,7 +144,7 @@
       <!-- ✅ 로그 -->
       <div class="log">
         {% for line in log %}
-          {{ line }}<br />
+          <div>{{ line }}</div>
         {% endfor %}
       </div>
 
@@ -170,7 +170,7 @@
       <input type="hidden" name="selected_channel" id="selected_channel">
       <input type="hidden" name="selected_pc" id="selected_pc">
 
-      <!-- ✅ CSV 다운로드 버튼: 경로 변경 + 최하단 이동 + 폰트 축소 -->
+      <!-- ✅ CSV 다운로드 버튼 (최하단, 경로 수정, 작게) -->
       <a href="/download_all" class="download-link">📥 기록 CSV 다운로드</a>
     </form>
   </div>
@@ -189,10 +189,8 @@
     }
 
     function selectMemo(btn) {
-      // 선택 버튼 강조
       document.querySelectorAll('#memo-list button').forEach(b => b.classList.remove('selected'));
       btn.classList.add('selected');
-      // input 자동 세팅
       document.querySelector('.memo-input').value = btn.innerText;
     }
   </script>
