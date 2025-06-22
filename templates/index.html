@@ -75,18 +75,37 @@
     }
     ul {
       margin-top: 20px;
-      padding-left: 20px;
+      padding-left: 0;
+      list-style: none;
       word-break: break-all;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
     }
     li {
-      margin: 5px 0;
+      margin: 0;
     }
-    /* 다운로드 버튼 스타일 */
+    /* 메모 키워드 버튼 스타일 */
+    #memo-list button {
+      background: #222;
+      color: #0f0;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #memo-list button.selected {
+      background: #0f0;
+      color: #111;
+    }
+
+    /* 다운로드 버튼 스타일 + 폰트 축소 */
     .download-link {
-      margin-top: 15px;
+      margin-top: 30px;
       display: inline-block;
       color: #0f0;
       text-decoration: underline;
+      font-size: 0.8em; /* 폰트 2단계 작게 */
     }
   </style>
 </head>
@@ -129,9 +148,6 @@
         {% endfor %}
       </div>
 
-      <!-- ✅ 📥 CSV 다운로드 링크 추가 -->
-      <a href="/download" class="download-link">📥 기록 CSV 다운로드</a>
-
       <!-- ✅ 메모 기능 -->
       <div>
         <h4>🗂️ 메모 기능</h4>
@@ -143,9 +159,9 @@
         </div>
 
         <h4>📌 메모 키워드</h4>
-        <ul>
+        <ul id="memo-list">
           {% for memo in memo_list %}
-            <li>{{ memo }}</li>
+            <li><button type="button" onclick="selectMemo(this)">{{ memo }}</button></li>
           {% endfor %}
         </ul>
       </div>
@@ -153,6 +169,9 @@
       <!-- ✅ 선택값 hidden -->
       <input type="hidden" name="selected_channel" id="selected_channel">
       <input type="hidden" name="selected_pc" id="selected_pc">
+
+      <!-- ✅ CSV 다운로드 버튼: 경로 변경 + 최하단 이동 + 폰트 축소 -->
+      <a href="/download_all" class="download-link">📥 기록 CSV 다운로드</a>
     </form>
   </div>
 
@@ -167,6 +186,14 @@
         document.querySelectorAll('#pc-buttons .select-btn').forEach(b => b.classList.remove('selected'));
       }
       btn.classList.add('selected');
+    }
+
+    function selectMemo(btn) {
+      // 선택 버튼 강조
+      document.querySelectorAll('#memo-list button').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      // input 자동 세팅
+      document.querySelector('.memo-input').value = btn.innerText;
     }
   </script>
 </body>
