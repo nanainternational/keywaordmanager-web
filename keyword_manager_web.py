@@ -22,7 +22,6 @@ def index():
     memo_list = load_memo_list()
     history_list = load_history_list()
 
-    # ✅ 기본: 기록 이력 숨김
     show_history = False
 
     if request.method == "POST":
@@ -33,10 +32,11 @@ def index():
         if action == "record":
             log = record_keyword(keyword, selected_channel, selected_pc)
         elif action == "check":
-            log = check_history(keyword)
-            # ✅ 키워드 없으면 전체 이력 출력 ON
-            if not keyword:
+            if keyword.lower() == "all":
+                log = check_history("")
                 show_history = True
+            else:
+                log = check_history(keyword)
         elif action == "add_memo":
             add_memo(memo_keyword)
             memo_list = load_memo_list()
@@ -106,7 +106,7 @@ def check_history(keyword):
     df = pd.read_sql_query("SELECT rowid AS id, * FROM history", conn)
     conn.close()
 
-    if keyword:
+    if keyword and keyword.lower() != "all":
         df = df[df['keyword'] == keyword]
 
     if not df.empty:
