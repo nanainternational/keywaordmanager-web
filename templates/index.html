@@ -165,16 +165,18 @@
         {%- endfor %}
       </div>
 
-      <!-- 📑 기록 이력 -->
-      <h4>📑 기록 이력</h4>
-      <ul id="history-list">
-        {% for item in history_list %}
-          <li class="history-item">
-            <span>{{ item.keyword }} | {{ item.channel }} | {{ item.pc }} | {{ item.created_at }}</span>
-            <button type="button" class="delete-x" onclick="deleteHistory('{{ item.id }}', this)">❌</button>
-          </li>
-        {% endfor %}
-      </ul>
+      <!-- 📑 기록 이력: 키워드 없을 때만 출력 -->
+      {% if not keyword %}
+        <h4>📑 기록 이력</h4>
+        <ul id="history-list">
+          {% for item in history_list %}
+            <li class="history-item">
+              <span>{{ item.keyword }} | {{ item.channel }} | {{ item.pc }} | {{ item.created_at }}</span>
+              <button type="button" class="delete-x" onclick="deleteHistory('{{ item.id }}', this)">❌</button>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
 
       <!-- 메모 기능 -->
       <h4>🗂️ 메모 기능</h4>
