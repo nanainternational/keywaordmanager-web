@@ -4,6 +4,10 @@
   <meta charset="UTF-8" />
   <title>Keyword Manager Web</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- ✅ Favicon 링크 추가 -->
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+
   <style>
     html, body {
       height: 100%;
@@ -98,7 +102,6 @@
       background: #0f0;
       color: #111;
     }
-
     .history-item {
       background: #222;
       color: #0f0;
@@ -115,7 +118,6 @@
       cursor: pointer;
       font-size: 1em;
     }
-
     .download-link {
       margin-top: 30px;
       display: inline-block;
@@ -130,7 +132,7 @@
     <h2>Keyword Manager Web</h2>
     <form method="POST">
       <!-- 키워드 입력 -->
-      <input name="keyword" value="{{ keyword }}" placeholder="키워드 입력" />
+      <input name="keyword" value="{{ keyword }}" placeholder="키워드 입력 (all = 전체 이력)" />
 
       <!-- 채널 선택 -->
       <h4>📡 채널 선택</h4>
@@ -164,7 +166,7 @@
         {%- endfor %}
       </div>
 
-      <!-- 📑 기록 이력: 조회 시 & 접기/펼치기 -->
+      <!-- 📑 기록 이력 (all 입력 시만 & 접기/펼치기) -->
       {% if show_history %}
         <h4>
           📑 기록 이력 
