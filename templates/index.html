@@ -4,8 +4,6 @@
   <meta charset="UTF-8" />
   <title>Keyword Manager Web</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <!-- ✅ Favicon 링크 추가 -->
   <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
 
   <style>
@@ -130,11 +128,15 @@
 <body>
   <div class="container">
     <h2>Keyword Manager Web</h2>
+
+    <!-- ✅ 중국환율 표기 -->
+    <h3 style="margin-top:-10px; margin-bottom:20px;">
+      🇨🇳 중국환율 (기준 +2원 × 10%): <span style="color:yellow;">{{ exchange_rate }}원</span>
+    </h3>
+
     <form method="POST">
-      <!-- 키워드 입력 -->
       <input name="keyword" value="{{ keyword }}" placeholder="키워드 입력 (all = 전체 이력)" />
 
-      <!-- 채널 선택 -->
       <h4>📡 채널 선택</h4>
       <div class="row" id="channel-buttons">
         <button type="button" class="select-btn" onclick="selectOption('channel', '지마켓', this)">지마켓</button>
@@ -145,7 +147,6 @@
         <button type="button" class="select-btn" onclick="selectOption('channel', '4910', this)">4910</button>
       </div>
 
-      <!-- PC 선택 -->
       <h4>💻 PC 선택</h4>
       <div class="row" id="pc-buttons">
         <button type="button" class="select-btn" onclick="selectOption('pc', 'Lenovo', this)">Lenovo</button>
@@ -153,20 +154,17 @@
         <button type="button" class="select-btn" onclick="selectOption('pc', 'Razer', this)">Razer</button>
       </div>
 
-      <!-- 기록/조회 버튼 -->
       <div class="row">
         <button name="action" value="record">📝 기록하기</button>
         <button name="action" value="check">🔍 조회하기</button>
       </div>
 
-      <!-- 로그 -->
       <div class="log">
         {% for line in log -%}
           <div>{{ line }}</div>
         {%- endfor %}
       </div>
 
-      <!-- 📑 기록 이력 (all 입력 시만 & 접기/펼치기) -->
       {% if show_history %}
         <h4>
           📑 기록 이력 
@@ -184,7 +182,6 @@
         </div>
       {% endif %}
 
-      <!-- 메모 기능 -->
       <h4>🗂️ 메모 기능</h4>
       <input class="memo-input" name="memo_keyword" placeholder="메모할 키워드 입력" />
 
@@ -200,16 +197,12 @@
         {% endfor %}
       </ul>
 
-      <!-- 선택값 hidden -->
       <input type="hidden" name="selected_channel" id="selected_channel">
       <input type="hidden" name="selected_pc" id="selected_pc">
-
-      <!-- CSV 다운로드 링크 -->
       <a href="/download_all" class="download-link">📥 기록 CSV 다운로드</a>
     </form>
   </div>
 
-  <!-- JS -->
   <script>
     function selectOption(type, value, btn) {
       if (type === 'channel') {
