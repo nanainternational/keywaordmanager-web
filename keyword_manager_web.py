@@ -68,6 +68,67 @@ def index():
         exchange_rate=get_adjusted_exchange_rate()  # ✅ 환율 값 전달
     )
 
+@app.route("/delete_history", methods=["POST"])
+def delete_history():
+    data = request.get_json()
+    row_id = data.get("id")
+    if row_id:
+        conn = sqlite3.connect(DB_FILE)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM history WHERE rowid=?", (row_id,))
+        conn.commit()
+        conn.close()
+        export_combined_csv()
+        return {"status": "ok"}
+    else:
+        return {"status": "error"}
+
+@app.route("/download_all")
+def download_all():
+    export_combined_csv()
+    return send_file("backup.csv", as_attachment=True)
+
+@app.route("/upload_all", methods=["GET", "POST"])
+def upload_all():
+    if request.method == "POST":
+        f = request.files["file"]
+        if f and f.filename.endswith(".csv"):
+            f.save("uploaded_backup.csv")
+            with open("uploaded_backup.csv", "rb") as rawdata:
+                result = chardet.detect(rawdata.read())
+                detected_encoding = result['encoding']
+            try:
+                df_all = pd.read_csv("uploaded_backup.csv", encoding=detected_encoding)
+            except Exception:
+                df_all = pd.read_csv("uploaded_backup.csv", encoding="utf-8-sig")
+
+            if "table" not in df_all.columns:
+                return "❌ Error: This CSV does not have a 'table' column. Use the combined backup only."
+
+            df_history = df_all[df_all["table"] == "history"].drop(columns=["table"])
+            df_memos = df_all[df_all["table"] == "memos"][["keyword"]].drop_duplicates()
+
+            conn = sqlite3.connect(DB_FILE)
+            df_history.to_sql("history", conn, if_exists="replace", index=False)
+            df_memos.to_sql("memos", conn, if_exists="replace", index=False)
+            conn.close()
+
+            export_combined_csv()
+            return f"✅ 통합 CSV 복원 완료! (인코딩: {detected_encoding})"
+    return '''
+        <h3 style="color:lime;">📤 통합 CSV 업로드</h3>
+        <form method="POST" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".csv">
+            <input type="submit" value="Upload">
+        </form>
+    '''
+
+@app.route("/api/rate")
+def api_rate():
+    return jsonify({
+        "rate": get_adjusted_exchange_rate()
+    })
+
 def record_keyword(keyword, channel, pc):
     logs = []
     if not keyword:
@@ -173,66 +234,7 @@ def delete_memo(keyword):
         conn.close()
         export_combined_csv()
 
-@app.route("/delete_history", methods=["POST"])
-def delete_history():
-    data = request.get_json()
-    row_id = data.get("id")
-    if row_id:
-        conn = sqlite3.connect(DB_FILE)
-        cur = conn.cursor()
-        cur.execute("DELETE FROM history WHERE rowid=?", (row_id,))
-        conn.commit()
-        conn.close()
-        export_combined_csv()
-        return {"status": "ok"}
-    else:
-        return {"status": "error"}
-
-@app.route("/download_all")
-def download_all():
-    export_combined_csv()
-    return send_file("backup.csv", as_attachment=True)
-
-@app.route("/upload_all", methods=["GET", "POST"])
-def upload_all():
-    if request.method == "POST":
-        f = request.files["file"]
-        if f and f.filename.endswith(".csv"):
-            f.save("uploaded_backup.csv")
-            with open("uploaded_backup.csv", "rb") as rawdata:
-                result = chardet.detect(rawdata.read())
-                detected_encoding = result['encoding']
-            try:
-                df_all = pd.read_csv("uploaded_backup.csv", encoding=detected_encoding)
-            except Exception:
-                df_all = pd.read_csv("uploaded_backup.csv", encoding="utf-8-sig")
-
-            if "table" not in df_all.columns:
-                return "❌ Error: This CSV does not have a 'table' column. Use the combined backup only."
-
-            df_history = df_all[df_all["table"] == "history"].drop(columns=["table"])
-            df_memos = df_all[df_all["table"] == "memos"][["keyword"]].drop_duplicates()
-
-            conn = sqlite3.connect(DB_FILE)
-            df_history.to_sql("history", conn, if_exists="replace", index=False)
-            df_memos.to_sql("memos", conn, if_exists="replace", index=False)
-            conn.close()
-
-            export_combined_csv()
-            return f"✅ 통합 CSV 복원 완료! (인코딩: {detected_encoding})"
-    return '''
-        <h3 style="color:lime;">📤 통합 CSV 업로드</h3>
-        <form method="POST" enctype="multipart/form-data">
-            <input type="file" name="file" accept=".csv">
-            <input type="submit" value="Upload">
-        </form>
-    '''
+print("🔁 강제 디플로이 트리거")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
-
-@app.route("/api/rate")
-def api_rate():
-    return jsonify({
-        "rate": get_adjusted_exchange_rate()
-    })
