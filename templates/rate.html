@@ -1,25 +1,46 @@
-<!-- templates/rate.html -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <title>중국 환율</title>
+  <meta charset="UTF-8" />
+  <title>중국 환율 표시</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
-      background-color: black;
-      color: lime;
-      font-family: sans-serif;
-      text-align: center;
-      padding: 50px;
+      background: #111;
+      color: #0f0;
+      font-family: 'Nanum Barun Gothic', sans-serif;
+      font-size: 18px;
+      padding: 30px;
     }
-    .rate {
-      font-size: 40px;
-      margin-top: 20px;
+    #rate {
+      font-size: 24px;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
-  <h1>📈 중국환율 계산기</h1>
-  <p class="rate">현재 환율: <strong>{{ exchange_rate }}</strong> 원</p>
+
+  <h2>💱 실시간 중국 환율</h2>
+  <div id="rate">환율 불러오는 중...</div>
+
+  <script>
+    fetch("https://keywaordmanager-web.onrender.com/rate")
+      .then(response => {
+        if (!response.ok) throw new Error("서버 응답 오류");
+        return response.json();
+      })
+      .then(data => {
+        if (data.rate) {
+          document.getElementById("rate").innerText = `🇨🇳 중국환율: ${data.rate}원`;
+        } else {
+          document.getElementById("rate").innerText = "❌ 환율 데이터 없음";
+        }
+      })
+      .catch(err => {
+        document.getElementById("rate").innerText = "❌ 환율 불러오기 실패";
+        console.error("환율 불러오기 오류:", err);
+      });
+  </script>
+
 </body>
 </html>
