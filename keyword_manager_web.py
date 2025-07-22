@@ -7,6 +7,11 @@ import os
 import chardet
 import requests
 
+from flask_cors import CORS  # ✅ 추가
+
+app = Flask(__name__)
+CORS(app)  # ✅ 추가
+
 app = Flask(__name__)
 DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
