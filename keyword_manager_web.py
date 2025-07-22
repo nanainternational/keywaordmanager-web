@@ -7,15 +7,13 @@ import os
 import chardet
 import requests
 
-from flask_cors import CORS  # ✅ 추가
+from flask_cors import CORS  # ✅ CORS 추가
 
 app = Flask(__name__)
-CORS(app)  # ✅ 추가
+CORS(app)  # ✅ CORS 활성화 (한 번만 선언)
 
-app = Flask(__name__)
 DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
-
 
 # ✅ 중국환율 계산 함수
 def get_adjusted_exchange_rate():
