@@ -2,11 +2,46 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>중국환율 계산기</title>
+  <title>중국 환율</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      background-color: #111;
+      color: #0f0;
+      font-family: 'Malgun Gothic', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .box {
+      text-align: center;
+      border: 1px solid #0f0;
+      padding: 30px;
+      border-radius: 12px;
+    }
+    h1 {
+      margin-bottom: 10px;
+      font-size: 24px;
+    }
+    .rate {
+      font-size: 32px;
+      font-weight: bold;
+    }
+    a {
+      display: inline-block;
+      margin-top: 20px;
+      color: #0f0;
+      text-decoration: underline;
+    }
+  </style>
 </head>
-<body style="background-color:#111; color:#0f0; font-family:sans-serif; padding:20px;">
-  <h2>🇨🇳 중국환율 계산 결과</h2>
-  <p>기준 환율 + 2원 × 10% = <strong>{{ exchange_rate }}원</strong></p>
-  <a href="/" style="color:yellow;">← 메인으로 돌아가기</a>
+<body>
+  <div class="box">
+    <h1>📈 오늘의 중국 환율</h1>
+    <div class="rate">{{ exchange_rate }} 원</div>
+    <a href="/">← 메인으로 돌아가기</a>
+  </div>
 </body>
 </html>
