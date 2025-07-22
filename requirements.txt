@@ -4,3 +4,4 @@ pandas
 pytz
 chardet
 gunicorn
+flask-cors
