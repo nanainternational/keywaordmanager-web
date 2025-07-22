@@ -5,12 +5,20 @@ from datetime import datetime
 import pytz
 import os
 import chardet
+import requests
 
 app = Flask(__name__)
-
 DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
 
+# ✅ 중국환율 계산 함수
+def get_adjusted_exchange_rate():
+    try:
+        base_rate = 190.15  # 매매기준율 예시
+        adjusted_rate = round((base_rate + 2) * 1.1, 2)
+        return adjusted_rate
+    except Exception:
+        return "N/A"
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -21,7 +29,6 @@ def index():
 
     memo_list = load_memo_list()
     history_list = load_history_list()
-
     show_history = False
 
     if request.method == "POST":
@@ -33,7 +40,7 @@ def index():
             log = record_keyword(keyword, selected_channel, selected_pc)
         elif action == "check":
             if keyword.lower() == "all":
-                log = []  # ✅ 로그에는 안 찍힘
+                log = []
                 show_history = True
             else:
                 log = check_history(keyword)
@@ -57,9 +64,9 @@ def index():
         pcs=pcs,
         selected_channel=selected_channel,
         selected_pc=selected_pc,
-        show_history=show_history
+        show_history=show_history,
+        exchange_rate=get_adjusted_exchange_rate()  # ✅ 환율 값 전달
     )
-
 
 def record_keyword(keyword, channel, pc):
     logs = []
@@ -80,13 +87,11 @@ def record_keyword(keyword, channel, pc):
             keyword TEXT, channel TEXT, pc TEXT, created_at TEXT
         )
     """)
-    cur.execute("""
-        SELECT * FROM history WHERE keyword=? AND channel=?
-    """, (keyword, channel))
+    cur.execute("SELECT * FROM history WHERE keyword=? AND channel=?", (keyword, channel))
     duplicate = cur.fetchone()
 
     if duplicate:
-        logs.append(f"⚠️ 이미 기록됨")
+        logs.append("⚠️ 이미 기록됨")
     else:
         now = datetime.now(tz).strftime("%Y-%m-%d")
         cur.execute("""
@@ -98,7 +103,6 @@ def record_keyword(keyword, channel, pc):
     conn.close()
     export_combined_csv()
     return logs
-
 
 def check_history(keyword):
     logs = []
@@ -117,7 +121,6 @@ def check_history(keyword):
         logs.append("ℹ️ 이력이 없습니다.")
     return logs
 
-
 def export_combined_csv():
     conn = sqlite3.connect(DB_FILE)
     df_history = pd.read_sql_query("SELECT * FROM history", conn)
@@ -132,9 +135,7 @@ def export_combined_csv():
 
     df_all = pd.concat([df_history, df_memos], ignore_index=True)
     conn.close()
-
     df_all.to_csv("backup.csv", index=False)
-
 
 def load_memo_list():
     conn = sqlite3.connect(DB_FILE)
@@ -145,7 +146,6 @@ def load_memo_list():
     conn.close()
     return memos
 
-
 def load_history_list():
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
@@ -154,7 +154,6 @@ def load_history_list():
             for row in cur.fetchall()]
     conn.close()
     return rows
-
 
 def add_memo(keyword):
     if keyword:
@@ -165,7 +164,6 @@ def add_memo(keyword):
         conn.close()
         export_combined_csv()
 
-
 def delete_memo(keyword):
     if keyword:
         conn = sqlite3.connect(DB_FILE)
@@ -174,7 +172,6 @@ def delete_memo(keyword):
         conn.commit()
         conn.close()
         export_combined_csv()
-
 
 @app.route("/delete_history", methods=["POST"])
 def delete_history():
@@ -191,12 +188,10 @@ def delete_history():
     else:
         return {"status": "error"}
 
-
 @app.route("/download_all")
 def download_all():
     export_combined_csv()
     return send_file("backup.csv", as_attachment=True)
-
 
 @app.route("/upload_all", methods=["GET", "POST"])
 def upload_all():
@@ -233,6 +228,11 @@ def upload_all():
         </form>
     '''
 
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
+
+@app.route("/api/rate")
+def api_rate():
+    return jsonify({
+        "rate": get_adjusted_exchange_rate()
+    })
