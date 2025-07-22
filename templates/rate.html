@@ -1,47 +1,25 @@
+<!-- templates/rate.html -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <title>중국 환율</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
-      background-color: #111;
-      color: #0f0;
-      font-family: 'Malgun Gothic', sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-    }
-    .box {
+      background-color: black;
+      color: lime;
+      font-family: sans-serif;
       text-align: center;
-      border: 1px solid #0f0;
-      padding: 30px;
-      border-radius: 12px;
-    }
-    h1 {
-      margin-bottom: 10px;
-      font-size: 24px;
+      padding: 50px;
     }
     .rate {
-      font-size: 32px;
-      font-weight: bold;
-    }
-    a {
-      display: inline-block;
+      font-size: 40px;
       margin-top: 20px;
-      color: #0f0;
-      text-decoration: underline;
     }
   </style>
 </head>
 <body>
-  <div class="box">
-    <h1>📈 오늘의 중국 환율</h1>
-    <div class="rate">{{ exchange_rate }} 원</div>
-    <a href="/">← 메인으로 돌아가기</a>
-  </div>
+  <h1>📈 중국환율 계산기</h1>
+  <p class="rate">현재 환율: <strong>{{ exchange_rate }}</strong> 원</p>
 </body>
 </html>
