@@ -5,8 +5,6 @@ from datetime import datetime
 import pytz
 import os
 import chardet
-import requests
-from bs4 import BeautifulSoup
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -14,25 +12,6 @@ CORS(app)
 
 DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
-
-# ✅ 네이버 기준환율 파싱 + 계산
-def get_adjusted_exchange_rate():
-    try:
-        url = "https://finance.naver.com/marketindex/exchangeDetailQuote.naver?marketindexCd=FX_CNYKRW"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(url, headers=headers, timeout=5)
-        soup = BeautifulSoup(res.text, "html.parser")
-        value_tag = soup.select_one("table.tbl_exchange tbody tr td.sale")
-        if not value_tag:
-            print("❌ 환율 값 못 찾음")
-            return "N/A"
-        base = value_tag.text.strip().replace(",", "")
-        base_rate = float(base)
-        adjusted = round((base_rate + 2) * 1.1, 2)
-        return adjusted
-    except Exception as e:
-        print("❌ 네이버 환율 파싱 실패:", e)
-        return "N/A"
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -74,19 +53,33 @@ def index():
         history_list=history_list,
         channels=channels,
         selected_channel=selected_channel,
-        show_history=show_history,
-        exchange_rate=get_adjusted_exchange_rate()
+        show_history=show_history
     )
 
 @app.route("/rate")
 def rate_page():
-    return render_template("rate.html", exchange_rate=get_adjusted_exchange_rate())
+    return render_template("rate.html")
 
 @app.route("/api/rate")
 def api_rate():
-    return jsonify({
-        "rate": get_adjusted_exchange_rate()
-    })
+    # 네이버 기준환율 파싱 + 계산
+    import requests
+    from bs4 import BeautifulSoup
+    try:
+        url = "https://finance.naver.com/marketindex/exchangeDetailQuote.naver?marketindexCd=FX_CNYKRW"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=5)
+        soup = BeautifulSoup(res.text, "html.parser")
+        value_tag = soup.select_one("table.tbl_exchange tbody tr td.sale")
+        if not value_tag:
+            return jsonify({"rate": None})
+        base = value_tag.text.strip().replace(",", "")
+        base_rate = float(base)
+        adjusted = round((base_rate + 2) * 1.1, 2)
+        return jsonify({"rate": adjusted})
+    except Exception as e:
+        print("❌ 환율 파싱 실패:", e)
+        return jsonify({"rate": None})
 
 def record_keyword(keyword, channel):
     logs = []
