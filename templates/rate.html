@@ -19,25 +19,24 @@
 <body>
   <h2>🇨🇳 중국환율 (기준 +2원 × 10%)</h2>
   <div class="rate">
-    <span id="exchange-rate">로딩 중...</span> 원
+    <span id="exchange-rate">로딩중<span class="dot">...</span></span> 원
   </div>
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {
+      const span = document.getElementById("exchange-rate");
+
       fetch("/api/rate")
         .then(res => res.json())
         .then(data => {
-          const rate = data.rate;
-          const span = document.getElementById("exchange-rate");
-          if (rate && span) {
-            span.textContent = rate.toLocaleString();
+          if (typeof data.rate === "number" && span) {
+            span.textContent = data.rate.toLocaleString();
           } else {
             span.textContent = "환율 정보 없음";
           }
         })
         .catch(err => {
           console.error("❌ fetch 에러:", err);
-          const span = document.getElementById("exchange-rate");
           if (span) span.textContent = "환율 불러오기 실패";
         });
     });

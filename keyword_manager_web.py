@@ -16,26 +16,30 @@ DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
 
 
-# ✅ 네이버 환율 파싱 (검색페이지 기준)
+# ✅ 시티은행 환율 파싱
 def get_adjusted_exchange_rate():
     try:
-        url = "https://search.naver.com/search.naver?where=nexearch&query=중국환율"
+        url = "https://www.citibank.co.kr/FxdExrt0100.act"
         headers = {"User-Agent": "Mozilla/5.0"}
         res = requests.get(url, headers=headers, timeout=5)
         soup = BeautifulSoup(res.text, "html.parser")
 
-        rate_tag = soup.select_one("div.rate_info strong.value")
-        if not rate_tag:
+        # 첫 번째 <span class="green">을 선택 (CNY 환율 추정)
+        span = soup.select_one("span.green")
+        if not span:
             print("❌ 환율 값을 찾을 수 없습니다.")
             return None
 
-        base_text = rate_tag.text.strip().replace(",", "")
-        print("🔍 네이버 환율 원본:", base_text)
+        base_text = span.text.strip().replace(",", "")
+        print("🔍 시티은행 환율 원본:", base_text)
         base_rate = float(base_text)
+
+        # +2원 후 10% 가산
         adjusted = round((base_rate + 2) * 1.1, 2)
+        print("✅ 조정 환율:", adjusted)
         return adjusted
     except Exception as e:
-        print("❌ 네이버 환율 파싱 실패:", e)
+        print("❌ 시티은행 환율 파싱 실패:", e)
         return None
 
 
