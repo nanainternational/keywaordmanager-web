@@ -24,31 +24,25 @@ def get_adjusted_exchange_rate():
         res = requests.get(url, headers=headers, timeout=5)
         soup = BeautifulSoup(res.text, "html.parser")
 
-        li_tags = soup.select("ul.exchangelist > li")
-        if len(li_tags) < 2:
-            print("❌ 두 번째 li가 존재하지 않음")
-            return None
+        # 모든 <li> 검사
+        for li in soup.select("ul.exchangeList > li"):
+            label = li.select_one("span.flagCn")
+            value = li.select_one("span.green")
 
-        li = li_tags[1]
-        if "중국" not in li.get_text():
-            print("⚠️ 두 번째 li가 중국이 아닐 수 있음")
+            if label and "중국" in label.text and value:
+                base_rate = float(value.text.strip().replace(",", ""))
+                adjusted = round((base_rate + 2) * 1.1, 2)
+                print("✅ CNY 원본:", base_rate)
+                print("✅ 조정 환율:", adjusted)
+                return adjusted
 
-        rate_tag = li.select_one("span.green")
-        if not rate_tag:
-            print("❌ 환율 정보(span.green)를 찾을 수 없음")
-            return None
-
-        base_text = rate_tag.text.strip().replace(",", "")
-        base_rate = float(base_text)
-        adjusted = round((base_rate + 2) * 1.1, 2)
-
-        print("✅ CNY 원본 환율:", base_rate)
-        print("✅ 조정 환율:", adjusted)
-        return adjusted
+        print("❌ 중국 환율을 찾을 수 없습니다.")
+        return None
 
     except Exception as e:
-        print("❌ 시티은행 환율 파싱 실패:", e)
+        print("❌ 환율 파싱 실패:", e)
         return None
+
 
 
 @app.route("/", methods=["GET", "POST"])
