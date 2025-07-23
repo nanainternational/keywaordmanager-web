@@ -5,6 +5,8 @@ from datetime import datetime
 import pytz
 import os
 import chardet
+import requests
+from bs4 import BeautifulSoup
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -12,6 +14,30 @@ CORS(app)
 
 DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
+
+
+# ✅ 네이버 환율 파싱 (검색페이지 기준)
+def get_adjusted_exchange_rate():
+    try:
+        url = "https://search.naver.com/search.naver?where=nexearch&query=중국환율"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=5)
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        rate_tag = soup.select_one("div.rate_info strong.value")
+        if not rate_tag:
+            print("❌ 환율 값을 찾을 수 없습니다.")
+            return None
+
+        base_text = rate_tag.text.strip().replace(",", "")
+        print("🔍 네이버 환율 원본:", base_text)
+        base_rate = float(base_text)
+        adjusted = round((base_rate + 2) * 1.1, 2)
+        return adjusted
+    except Exception as e:
+        print("❌ 네이버 환율 파싱 실패:", e)
+        return None
+
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -54,34 +80,21 @@ def index():
         channels=channels,
         selected_channel=selected_channel,
         show_history=show_history,
-        exchange_rate=None  # rate.html에서만 환율 표시
+        exchange_rate=get_adjusted_exchange_rate()
     )
+
 
 @app.route("/rate")
 def rate_page():
-    return render_template("rate.html")
+    return render_template("rate.html", exchange_rate=get_adjusted_exchange_rate())
+
 
 @app.route("/api/rate")
 def api_rate():
-    from bs4 import BeautifulSoup
-    import requests
-    try:
-        url = "https://www.citibank.co.kr/FxdExrt0100.act"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(url, headers=headers, timeout=5)
-        soup = BeautifulSoup(res.text, "html.parser")
-        rows = soup.select("table.tbl_type tbody tr")
-        for row in rows:
-            cols = row.find_all("td")
-            if len(cols) > 0 and "CNY" in cols[0].text:
-                base_text = cols[1].text.strip().replace(",", "")
-                base_rate = float(base_text)
-                adjusted = round((base_rate + 2) * 1.1, 2)
-                return jsonify({"rate": adjusted})
-        return jsonify({"rate": None})
-    except Exception as e:
-        print("❌ 환율 파싱 실패:", e)
-        return jsonify({"rate": None})
+    return jsonify({
+        "rate": get_adjusted_exchange_rate()
+    })
+
 
 def record_keyword(keyword, channel):
     logs = []
@@ -116,6 +129,7 @@ def record_keyword(keyword, channel):
     export_combined_csv()
     return logs
 
+
 def check_history(keyword):
     logs = []
     conn = sqlite3.connect(DB_FILE)
@@ -133,6 +147,7 @@ def check_history(keyword):
         logs.append("ℹ️ 이력이 없습니다.")
     return logs
 
+
 def export_combined_csv():
     conn = sqlite3.connect(DB_FILE)
     df_history = pd.read_sql_query("SELECT * FROM history", conn)
@@ -148,6 +163,7 @@ def export_combined_csv():
     conn.close()
     df_all.to_csv("backup.csv", index=False)
 
+
 def load_memo_list():
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
@@ -156,6 +172,7 @@ def load_memo_list():
     memos = [row[0] for row in cur.fetchall()]
     conn.close()
     return memos
+
 
 def load_history_list():
     conn = sqlite3.connect(DB_FILE)
@@ -166,6 +183,7 @@ def load_history_list():
     conn.close()
     return rows
 
+
 def add_memo(keyword):
     if keyword:
         conn = sqlite3.connect(DB_FILE)
@@ -175,6 +193,7 @@ def add_memo(keyword):
         conn.close()
         export_combined_csv()
 
+
 def delete_memo(keyword):
     if keyword:
         conn = sqlite3.connect(DB_FILE)
@@ -183,6 +202,7 @@ def delete_memo(keyword):
         conn.commit()
         conn.close()
         export_combined_csv()
+
 
 @app.route("/delete_history", methods=["POST"])
 def delete_history():
@@ -199,10 +219,12 @@ def delete_history():
     else:
         return {"status": "error"}
 
+
 @app.route("/download_all")
 def download_all():
     export_combined_csv()
     return send_file("backup.csv", as_attachment=True)
+
 
 @app.route("/upload_all", methods=["GET", "POST"])
 def upload_all():
@@ -238,6 +260,7 @@ def upload_all():
             <input type="submit" value="Upload">
         </form>
     '''
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
