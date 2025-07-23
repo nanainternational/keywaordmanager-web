@@ -5,8 +5,6 @@ from datetime import datetime
 import pytz
 import os
 import chardet
-import requests
-from bs4 import BeautifulSoup
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -14,26 +12,6 @@ CORS(app)
 
 DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
-
-# ✅ 네이버 기준환율 파싱 + 계산
-def get_adjusted_exchange_rate():
-    try:
-        url = "https://finance.naver.com/marketindex/exchangeDetailQuote.naver?marketindexCd=FX_CNYKRW"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(url, headers=headers, timeout=5)
-        soup = BeautifulSoup(res.text, "html.parser")
-        value_tag = soup.select_one("span.nb_txt._pronunciation")
-        if not value_tag:
-            print("❌ 환율 값 못 찾음")
-            return None
-        base_text = value_tag.text.strip().replace(",", "").replace("원", "").strip()
-        print("🔍 원본 환율:", base_text)
-        base_rate = float(base_text)
-        adjusted = round((base_rate + 2) * 1.1, 2)
-        return adjusted
-    except Exception as e:
-        print("❌ 네이버 환율 파싱 실패:", e)
-        return None
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -76,18 +54,34 @@ def index():
         channels=channels,
         selected_channel=selected_channel,
         show_history=show_history,
-        exchange_rate=get_adjusted_exchange_rate()
+        exchange_rate=None  # rate.html에서만 환율 표시
     )
 
 @app.route("/rate")
 def rate_page():
-    return render_template("rate.html", exchange_rate=get_adjusted_exchange_rate())
+    return render_template("rate.html")
 
 @app.route("/api/rate")
 def api_rate():
-    return jsonify({
-        "rate": get_adjusted_exchange_rate()
-    })
+    from bs4 import BeautifulSoup
+    import requests
+    try:
+        url = "https://www.citibank.co.kr/FxdExrt0100.act"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=5)
+        soup = BeautifulSoup(res.text, "html.parser")
+        rows = soup.select("table.tbl_type tbody tr")
+        for row in rows:
+            cols = row.find_all("td")
+            if len(cols) > 0 and "CNY" in cols[0].text:
+                base_text = cols[1].text.strip().replace(",", "")
+                base_rate = float(base_text)
+                adjusted = round((base_rate + 2) * 1.1, 2)
+                return jsonify({"rate": adjusted})
+        return jsonify({"rate": None})
+    except Exception as e:
+        print("❌ 환율 파싱 실패:", e)
+        return jsonify({"rate": None})
 
 def record_keyword(keyword, channel):
     logs = []
