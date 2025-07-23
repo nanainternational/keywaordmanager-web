@@ -5,3 +5,4 @@ pytz
 chardet
 gunicorn
 flask-cors
+beautifulsoup4
