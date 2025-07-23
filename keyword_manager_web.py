@@ -6,7 +6,7 @@ import pytz
 import os
 import chardet
 import requests
-from bs4 import BeautifulSoup  # ✅ 나중에 쓸 수도 있으니 포함
+from bs4 import BeautifulSoup
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -15,7 +15,7 @@ CORS(app)
 DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
 
-# ✅ 무료 API로 실시간 환율 받아오기 (CNY → KRW)
+# ✅ 환율 API 호출
 def get_adjusted_exchange_rate():
     try:
         url = "https://api.exchangerate.host/latest?base=CNY&symbols=KRW"
@@ -33,7 +33,6 @@ def index():
     keyword = ""
     log = []
     selected_channel = request.form.get("selected_channel", "")
-    selected_pc = request.form.get("selected_pc", "")
 
     memo_list = load_memo_list()
     history_list = load_history_list()
@@ -45,7 +44,7 @@ def index():
         memo_keyword = request.form.get("memo_keyword", "").strip()
 
         if action == "record":
-            log = record_keyword(keyword, selected_channel, selected_pc)
+            log = record_keyword(keyword, selected_channel)
         elif action == "check":
             if keyword.lower() == "all":
                 log = []
@@ -60,7 +59,6 @@ def index():
             memo_list = load_memo_list()
 
     channels = ["지마켓", "쿠팡", "지그재그", "도매꾹", "에이블리", "4910"]
-    pcs = ["Lenovo", "HP", "Razer"]
 
     return render_template(
         "index.html",
@@ -69,9 +67,7 @@ def index():
         memo_list=memo_list,
         history_list=history_list,
         channels=channels,
-        pcs=pcs,
         selected_channel=selected_channel,
-        selected_pc=selected_pc,
         show_history=show_history,
         exchange_rate=get_adjusted_exchange_rate()
     )
@@ -86,7 +82,7 @@ def api_rate():
         "rate": get_adjusted_exchange_rate()
     })
 
-def record_keyword(keyword, channel, pc):
+def record_keyword(keyword, channel):
     logs = []
     if not keyword:
         logs.append("❌ 키워드를 입력하세요.")
@@ -94,15 +90,12 @@ def record_keyword(keyword, channel, pc):
     if not channel:
         logs.append("❌ 채널을 선택하세요.")
         return logs
-    if not pc:
-        logs.append("❌ PC를 선택하세요.")
-        return logs
 
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS history (
-            keyword TEXT, channel TEXT, pc TEXT, created_at TEXT
+            keyword TEXT, channel TEXT, created_at TEXT
         )
     """)
     cur.execute("SELECT * FROM history WHERE keyword=? AND channel=?", (keyword, channel))
@@ -113,10 +106,10 @@ def record_keyword(keyword, channel, pc):
     else:
         now = datetime.now(tz).strftime("%Y-%m-%d")
         cur.execute("""
-            INSERT INTO history (keyword, channel, pc, created_at) VALUES (?, ?, ?, ?)
-        """, (keyword, channel, pc, now))
+            INSERT INTO history (keyword, channel, created_at) VALUES (?, ?, ?)
+        """, (keyword, channel, now))
         conn.commit()
-        logs.append(f"✅ 기록 완료: {keyword} - {channel} - {pc}")
+        logs.append(f"✅ 기록 완료: {keyword} - {channel}")
 
     conn.close()
     export_combined_csv()
@@ -134,7 +127,7 @@ def check_history(keyword):
     if not df.empty:
         logs.append(f"🔍 이력 {len(df)}건:")
         for _, row in df.iterrows():
-            logs.append(f"  📌 {row['keyword']} | {row['channel']} | {row['pc']} | {row['created_at']}")
+            logs.append(f"  📌 {row['keyword']} | {row['channel']} | {row['created_at']}")
     else:
         logs.append("ℹ️ 이력이 없습니다.")
     return logs
@@ -147,9 +140,8 @@ def export_combined_csv():
     df_memos = pd.read_sql_query("SELECT keyword FROM memos", conn)
     df_memos["table"] = "memos"
     df_memos["channel"] = None
-    df_memos["pc"] = None
     df_memos["created_at"] = None
-    df_memos = df_memos[["table", "keyword", "channel", "pc", "created_at"]]
+    df_memos = df_memos[["table", "keyword", "channel", "created_at"]]
 
     df_all = pd.concat([df_history, df_memos], ignore_index=True)
     conn.close()
@@ -168,7 +160,7 @@ def load_history_list():
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
     cur.execute("SELECT rowid AS id, * FROM history")
-    rows = [{"id": row[0], "keyword": row[1], "channel": row[2], "pc": row[3], "created_at": row[4]}
+    rows = [{"id": row[0], "keyword": row[1], "channel": row[2], "created_at": row[3]}
             for row in cur.fetchall()]
     conn.close()
     return rows
