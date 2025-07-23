@@ -7,21 +7,27 @@ import os
 import chardet
 import requests
 
-from flask_cors import CORS  # ✅ CORS 추가
+from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)  # ✅ CORS 활성화 (한 번만 선언)
+CORS(app)
 
 DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
 
-# ✅ 중국환율 계산 함수
+
+# ✅ 중국환율 실시간 계산 함수
 def get_adjusted_exchange_rate():
     try:
-        base_rate = 190.15  # 예시 기준 환율
+        # 실시간 외부 환율 API 호출 (CNY → KRW)
+        res = requests.get("https://api.exchangerate.host/latest?base=CNY&symbols=KRW")
+        data = res.json()
+        base_rate = data["rates"]["KRW"]  # 실시간 환율
+
         adjusted_rate = round((base_rate + 2) * 1.1, 2)
         return adjusted_rate
-    except Exception:
+    except Exception as e:
+        print("환율 불러오기 실패:", e)
         return "N/A"
 
 
