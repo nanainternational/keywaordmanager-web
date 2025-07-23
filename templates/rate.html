@@ -2,17 +2,24 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>환율 확인</title>
+  <title>중국 환율 정보</title>
+  <style>
+    body {
+      background-color: #000;
+      color: #28a7e9;
+      font-family: sans-serif;
+      text-align: center;
+      padding-top: 50px;
+      font-size: 24px;
+    }
+  </style>
 </head>
-<body style="background:#000; color:#0f0; font-family:monospace; padding:20px;">
-  <h2>🇨🇳 중국환율 (기준 +2원 × 10%)</h2>
-  <div style="font-size:24px;">
-    <span id="exchange-rate">로딩 중...</span> 원
-  </div>
+<body>
+  🇨🇳 중국환율 (기준 +2원 × 10%): <span id="exchange-rate">로딩 중...</span> 원
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {
-      fetch("https://keywaordmanager-web.onrender.com/api/rate")
+      fetch("/api/rate")
         .then(res => res.json())
         .then(data => {
           const rate = data.rate;
