@@ -16,7 +16,7 @@ DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
 
 
-# ✅ 시티은행 환율 파싱 (중국 CNY 정확히 지정)
+# ✅ 시티은행 기준 - 두 번째 <li> = 중국(CNY) 환율
 def get_adjusted_exchange_rate():
     try:
         url = "https://www.citibank.co.kr/FxdExrt0100.act"
@@ -25,21 +25,26 @@ def get_adjusted_exchange_rate():
         soup = BeautifulSoup(res.text, "html.parser")
 
         li_tags = soup.select("ul.exchangelist > li")
+        if len(li_tags) < 2:
+            print("❌ 두 번째 li가 존재하지 않음")
+            return None
 
-        for li in li_tags:
-            country_tag = li.select_one("span.flagCn")
-            if country_tag and "중국" in country_tag.text:
-                rate_tag = li.select_one("span.green")
-                if rate_tag:
-                    base_text = rate_tag.text.strip().replace(",", "")
-                    base_rate = float(base_text)
-                    adjusted = round((base_rate + 2) * 1.1, 2)
-                    print("✅ CNY 원본 환율:", base_rate)
-                    print("✅ 조정 환율:", adjusted)
-                    return adjusted
+        li = li_tags[1]
+        if "중국" not in li.get_text():
+            print("⚠️ 두 번째 li가 중국이 아닐 수 있음")
 
-        print("❌ 중국(CNY) 환율을 찾을 수 없습니다.")
-        return None
+        rate_tag = li.select_one("span.green")
+        if not rate_tag:
+            print("❌ 환율 정보(span.green)를 찾을 수 없음")
+            return None
+
+        base_text = rate_tag.text.strip().replace(",", "")
+        base_rate = float(base_text)
+        adjusted = round((base_rate + 2) * 1.1, 2)
+
+        print("✅ CNY 원본 환율:", base_rate)
+        print("✅ 조정 환율:", adjusted)
+        return adjusted
 
     except Exception as e:
         print("❌ 시티은행 환율 파싱 실패:", e)
