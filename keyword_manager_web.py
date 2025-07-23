@@ -16,18 +16,17 @@ DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
 
 
-# ✅ 중국환율 실시간 계산 함수
+# ✅ 무료 API로 실시간 환율 받아오기 (CNY → KRW)
 def get_adjusted_exchange_rate():
     try:
-        # 실시간 외부 환율 API 호출 (CNY → KRW)
-        res = requests.get("https://api.exchangerate.host/latest?base=CNY&symbols=KRW")
+        url = "https://api.exchangerate.host/latest?base=CNY&symbols=KRW"
+        res = requests.get(url, timeout=5)
         data = res.json()
-        base_rate = data["rates"]["KRW"]  # 실시간 환율
-
-        adjusted_rate = round((base_rate + 2) * 1.1, 2)
-        return adjusted_rate
+        base_rate = data["rates"]["KRW"]
+        adjusted = round((base_rate + 2) * 1.1, 2)
+        return adjusted
     except Exception as e:
-        print("환율 불러오기 실패:", e)
+        print("❌ 환율 API 호출 실패:", e)
         return "N/A"
 
 
