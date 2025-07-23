@@ -15,16 +15,37 @@ CORS(app)
 DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
 
+# ✅ 환율 캐시 저장소
+cached_rate = {
+    "value": None,
+    "fetched_date": None  # YYYY-MM-DD-HH-MM
+}
 
 # ✅ 시티은행 기준 - 두 번째 <li> = 중국(CNY) 환율
+
 def get_adjusted_exchange_rate():
+    now = datetime.now(tz)
+    now_key = now.strftime("%Y-%m-%d-%H-%M")
+
+    # ✅ 테스트용 갱신 기준 시간 설정 (여기만 수정해서 원하는 시간으로 테스트 가능)
+    REFRESH_HOUR = 18
+    REFRESH_MINUTE = 10
+
+    refresh_time_key = now.strftime(f"%Y-%m-%d-{REFRESH_HOUR:02d}-{REFRESH_MINUTE:02d}")
+
+    if cached_rate["value"] and cached_rate["fetched_date"] == refresh_time_key:
+        return cached_rate["value"]
+
+    if (now.hour < REFRESH_HOUR) or (now.hour == REFRESH_HOUR and now.minute < REFRESH_MINUTE):
+        if cached_rate["value"]:
+            return cached_rate["value"]
+
     try:
         url = "https://www.citibank.co.kr/FxdExrt0100.act"
         headers = {"User-Agent": "Mozilla/5.0"}
         res = requests.get(url, headers=headers, timeout=5)
         soup = BeautifulSoup(res.text, "html.parser")
 
-        # 모든 <li> 검사
         for li in soup.select("ul.exchangeList > li"):
             label = li.select_one("span.flagCn")
             value = li.select_one("span.green")
@@ -32,18 +53,17 @@ def get_adjusted_exchange_rate():
             if label and "중국" in label.text and value:
                 base_rate = float(value.text.strip().replace(",", ""))
                 adjusted = round((base_rate + 2) * 1.1, 2)
-                print("✅ CNY 원본:", base_rate)
-                print("✅ 조정 환율:", adjusted)
+                cached_rate["value"] = adjusted
+                cached_rate["fetched_date"] = refresh_time_key
+                print(f"✅ [{refresh_time_key}] CNY 원본: {base_rate} → 조정 환율: {adjusted}")
                 return adjusted
 
         print("❌ 중국 환율을 찾을 수 없습니다.")
-        return None
+        return cached_rate["value"]
 
     except Exception as e:
         print("❌ 환율 파싱 실패:", e)
-        return None
-
-
+        return cached_rate["value"]
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -89,18 +109,15 @@ def index():
         exchange_rate=get_adjusted_exchange_rate()
     )
 
-
 @app.route("/rate")
 def rate_page():
     return render_template("rate.html", exchange_rate=get_adjusted_exchange_rate())
-
 
 @app.route("/api/rate")
 def api_rate():
     return jsonify({
         "rate": get_adjusted_exchange_rate()
     })
-
 
 def record_keyword(keyword, channel):
     logs = []
@@ -135,7 +152,6 @@ def record_keyword(keyword, channel):
     export_combined_csv()
     return logs
 
-
 def check_history(keyword):
     logs = []
     conn = sqlite3.connect(DB_FILE)
@@ -153,7 +169,6 @@ def check_history(keyword):
         logs.append("ℹ️ 이력이 없습니다.")
     return logs
 
-
 def export_combined_csv():
     conn = sqlite3.connect(DB_FILE)
     df_history = pd.read_sql_query("SELECT * FROM history", conn)
@@ -169,7 +184,6 @@ def export_combined_csv():
     conn.close()
     df_all.to_csv("backup.csv", index=False)
 
-
 def load_memo_list():
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
@@ -178,7 +192,6 @@ def load_memo_list():
     memos = [row[0] for row in cur.fetchall()]
     conn.close()
     return memos
-
 
 def load_history_list():
     conn = sqlite3.connect(DB_FILE)
@@ -189,7 +202,6 @@ def load_history_list():
     conn.close()
     return rows
 
-
 def add_memo(keyword):
     if keyword:
         conn = sqlite3.connect(DB_FILE)
@@ -199,7 +211,6 @@ def add_memo(keyword):
         conn.close()
         export_combined_csv()
 
-
 def delete_memo(keyword):
     if keyword:
         conn = sqlite3.connect(DB_FILE)
@@ -208,7 +219,6 @@ def delete_memo(keyword):
         conn.commit()
         conn.close()
         export_combined_csv()
-
 
 @app.route("/delete_history", methods=["POST"])
 def delete_history():
@@ -225,12 +235,10 @@ def delete_history():
     else:
         return {"status": "error"}
 
-
 @app.route("/download_all")
 def download_all():
     export_combined_csv()
     return send_file("backup.csv", as_attachment=True)
-
 
 @app.route("/upload_all", methods=["GET", "POST"])
 def upload_all():
@@ -250,7 +258,7 @@ def upload_all():
                 return "❌ Error: This CSV does not have a 'table' column. Use the combined backup only."
 
             df_history = df_all[df_all["table"] == "history"].drop(columns=["table"])
-            df_memos = df_all[df_all["table"] == "memos"][["keyword"]].drop_duplicates()
+            df_memos = df_all[df_all["table"] == "memos"]["keyword"].drop_duplicates().to_frame()
 
             conn = sqlite3.connect(DB_FILE)
             df_history.to_sql("history", conn, if_exists="replace", index=False)
@@ -267,6 +275,6 @@ def upload_all():
         </form>
     '''
 
-
 if __name__ == "__main__":
+    get_adjusted_exchange_rate()  # 앱 시작 시 1회 강제 호출
     app.run(host="0.0.0.0", port=5000, debug=True)
