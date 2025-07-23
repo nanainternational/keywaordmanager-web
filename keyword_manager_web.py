@@ -6,7 +6,7 @@ import pytz
 import os
 import chardet
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup  # ✅ 필요
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -15,17 +15,28 @@ CORS(app)
 DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
 
-# ✅ 환율 API 호출
+# ✅ 네이버에서 CNY → KRW 환율 가져오기
 def get_adjusted_exchange_rate():
     try:
-        url = "https://api.exchangerate.host/latest?base=CNY&symbols=KRW"
-        res = requests.get(url, timeout=5)
-        data = res.json()
-        base_rate = data["rates"]["KRW"]
-        adjusted = round((base_rate + 2) * 1.1, 2)
-        return adjusted
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+        url = "https://search.naver.com/search.naver?query=환율계산기"
+        res = requests.get(url, headers=headers, timeout=5)
+        res.raise_for_status()
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        span = soup.select_one("span.nb_txt._pronunciation[data-currency-unit='원']")
+        if span:
+            rate_text = span.text.replace(",", "").replace("원", "").strip()
+            base_rate = float(rate_text)
+            adjusted = round((base_rate + 2) * 1.1, 2)
+            return adjusted
+        else:
+            print("❌ 환율 span 태그 없음")
+            return "N/A"
     except Exception as e:
-        print("❌ 환율 API 호출 실패:", e)
+        print("❌ 네이버 환율 파싱 실패:", e)
         return "N/A"
 
 @app.route("/", methods=["GET", "POST"])

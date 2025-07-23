@@ -147,13 +147,6 @@
         <button type="button" class="select-btn" onclick="selectOption('channel', '4910', this)">4910</button>
       </div>
 
-      <h4>💻 PC 선택</h4>
-      <div class="row" id="pc-buttons">
-        <button type="button" class="select-btn" onclick="selectOption('pc', 'Lenovo', this)">Lenovo</button>
-        <button type="button" class="select-btn" onclick="selectOption('pc', 'HP', this)">HP</button>
-        <button type="button" class="select-btn" onclick="selectOption('pc', 'Razer', this)">Razer</button>
-      </div>
-
       <div class="row">
         <button name="action" value="record">📝 기록하기</button>
         <button name="action" value="check">🔍 조회하기</button>
@@ -174,7 +167,7 @@
           <ul id="history-list">
             {% for item in history_list %}
               <li class="history-item">
-                <span>{{ item.keyword }} | {{ item.channel }} | {{ item.pc }} | {{ item.created_at }}</span>
+                <span>{{ item.keyword }} | {{ item.channel }} | {{ item.created_at }}</span>
                 <button type="button" class="delete-x" onclick="deleteHistory('{{ item.id }}', this)">❌</button>
               </li>
             {% endfor %}
@@ -198,7 +191,6 @@
       </ul>
 
       <input type="hidden" name="selected_channel" id="selected_channel">
-      <input type="hidden" name="selected_pc" id="selected_pc">
       <a href="/download_all" class="download-link">📥 기록 CSV 다운로드</a>
     </form>
   </div>
@@ -208,9 +200,6 @@
       if (type === 'channel') {
         document.getElementById('selected_channel').value = value;
         document.querySelectorAll('#channel-buttons .select-btn').forEach(b => b.classList.remove('selected'));
-      } else {
-        document.getElementById('selected_pc').value = value;
-        document.querySelectorAll('#pc-buttons .select-btn').forEach(b => b.classList.remove('selected'));
       }
       btn.classList.add('selected');
     }
