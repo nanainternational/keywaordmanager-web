@@ -6,7 +6,7 @@ import pytz
 import os
 import chardet
 import requests
-
+from bs4 import BeautifulSoup  # ✅ 나중에 쓸 수도 있으니 포함
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -14,7 +14,6 @@ CORS(app)
 
 DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
-
 
 # ✅ 무료 API로 실시간 환율 받아오기 (CNY → KRW)
 def get_adjusted_exchange_rate():
@@ -28,7 +27,6 @@ def get_adjusted_exchange_rate():
     except Exception as e:
         print("❌ 환율 API 호출 실패:", e)
         return "N/A"
-
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -78,18 +76,15 @@ def index():
         exchange_rate=get_adjusted_exchange_rate()
     )
 
-
 @app.route("/rate")
 def rate_page():
     return render_template("rate.html", exchange_rate=get_adjusted_exchange_rate())
-
 
 @app.route("/api/rate")
 def api_rate():
     return jsonify({
         "rate": get_adjusted_exchange_rate()
     })
-
 
 def record_keyword(keyword, channel, pc):
     logs = []
@@ -127,7 +122,6 @@ def record_keyword(keyword, channel, pc):
     export_combined_csv()
     return logs
 
-
 def check_history(keyword):
     logs = []
     conn = sqlite3.connect(DB_FILE)
@@ -145,7 +139,6 @@ def check_history(keyword):
         logs.append("ℹ️ 이력이 없습니다.")
     return logs
 
-
 def export_combined_csv():
     conn = sqlite3.connect(DB_FILE)
     df_history = pd.read_sql_query("SELECT * FROM history", conn)
@@ -162,7 +155,6 @@ def export_combined_csv():
     conn.close()
     df_all.to_csv("backup.csv", index=False)
 
-
 def load_memo_list():
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
@@ -171,7 +163,6 @@ def load_memo_list():
     memos = [row[0] for row in cur.fetchall()]
     conn.close()
     return memos
-
 
 def load_history_list():
     conn = sqlite3.connect(DB_FILE)
@@ -182,7 +173,6 @@ def load_history_list():
     conn.close()
     return rows
 
-
 def add_memo(keyword):
     if keyword:
         conn = sqlite3.connect(DB_FILE)
@@ -192,7 +182,6 @@ def add_memo(keyword):
         conn.close()
         export_combined_csv()
 
-
 def delete_memo(keyword):
     if keyword:
         conn = sqlite3.connect(DB_FILE)
@@ -201,7 +190,6 @@ def delete_memo(keyword):
         conn.commit()
         conn.close()
         export_combined_csv()
-
 
 @app.route("/delete_history", methods=["POST"])
 def delete_history():
@@ -218,12 +206,10 @@ def delete_history():
     else:
         return {"status": "error"}
 
-
 @app.route("/download_all")
 def download_all():
     export_combined_csv()
     return send_file("backup.csv", as_attachment=True)
-
 
 @app.route("/upload_all", methods=["GET", "POST"])
 def upload_all():
@@ -259,7 +245,6 @@ def upload_all():
             <input type="submit" value="Upload">
         </form>
     '''
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
