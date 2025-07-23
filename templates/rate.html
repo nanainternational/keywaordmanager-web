@@ -2,26 +2,12 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>중국환율 조회</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body {
-      background-color: #000;
-      color: #28a7e9;
-      font-family: 'Nanum Gothic', sans-serif;
-      margin: 0;
-      padding: 20px;
-    }
-    .rate-box {
-      font-size: 1.5rem;
-      font-weight: bold;
-      text-align: right;
-    }
-  </style>
+  <title>환율 확인</title>
 </head>
-<body>
-  <div class="rate-box">
-    🇨🇳 중국환율 (기준 +2원 × 10%): <span id="exchange-rate">로딩 중...</span>원
+<body style="background:#000; color:#0f0; font-family:monospace; padding:20px;">
+  <h2>🇨🇳 중국환율 (기준 +2원 × 10%)</h2>
+  <div style="font-size:24px;">
+    <span id="exchange-rate">로딩 중...</span> 원
   </div>
 
   <script>
@@ -34,13 +20,13 @@
           if (rate && span) {
             span.textContent = rate.toLocaleString();
           } else {
-            span.textContent = "환율 정보 없음";
+            span.textContent = "N/A";
           }
         })
         .catch(err => {
           console.error("❌ fetch 에러:", err);
           const span = document.getElementById("exchange-rate");
-          if (span) span.textContent = "환율 불러오기 실패";
+          if (span) span.textContent = "불러오기 실패";
         });
     });
   </script>
