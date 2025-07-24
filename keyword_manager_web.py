@@ -28,8 +28,8 @@ def get_adjusted_exchange_rate():
     now_key = now.strftime("%Y-%m-%d-%H-%M")
 
     # ✅ 테스트용 갱신 기준 시간 설정 (여기만 수정해서 원하는 시간으로 테스트 가능)
-    REFRESH_HOUR = 10
-    REFRESH_MINUTE = 00
+    REFRESH_HOUR = 9
+    REFRESH_MINUTE = 5
 
     refresh_time_key = now.strftime(f"%Y-%m-%d-{REFRESH_HOUR:02d}-{REFRESH_MINUTE:02d}")
 
