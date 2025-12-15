@@ -40,9 +40,19 @@ class KeepAliveGUI:
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.root.mainloop()
 
+    def normalize_health_url(self, url: str) -> str:
+        url = (url or "").strip()
+        if not url:
+            return ""
+        url = url.rstrip("/")
+        # 이미 /health 또는 /health/ 로 끝나면 그대로
+        if url.endswith("/health"):
+            return url
+        return url + "/health"
+
     def start_pinging(self):
-        url1 = self.url_entry1.get().strip()
-        url2 = self.url_entry2.get().strip()
+        url1 = self.normalize_health_url(self.url_entry1.get())
+        url2 = self.normalize_health_url(self.url_entry2.get())
 
         if not url1 and not url2:
             self.log("❌ URL을 1개 이상 입력하세요.")
@@ -59,9 +69,11 @@ class KeepAliveGUI:
         )
         self.ping_thread.start()
 
-        self.log(f"✅ 5분마다 Ping 시작!")
-        self.log(f"   - {url1}")
-        self.log(f"   - {url2}")
+        self.log("✅ 5분마다 Ping 시작! (health 체크)")
+        if url1:
+            self.log(f"   - {url1}")
+        if url2:
+            self.log(f"   - {url2}")
 
     def stop_pinging(self):
         self.running = False
