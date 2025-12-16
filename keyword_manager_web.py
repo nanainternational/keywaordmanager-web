@@ -58,8 +58,10 @@ def init_db():
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
 
+    # ✅ 메모
     cur.execute("CREATE TABLE IF NOT EXISTS memos (keyword TEXT UNIQUE)")
 
+    # ✅ 캘린더 이벤트
     cur.execute("""
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,6 +70,17 @@ def init_db():
             end TEXT,
             all_day INTEGER DEFAULT 0,
             memo TEXT,
+            created_at TEXT
+        )
+    """)
+
+    # ✅ 채팅 메시지
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room TEXT DEFAULT 'main',
+            sender TEXT,
+            message TEXT NOT NULL,
             created_at TEXT
         )
     """)
@@ -139,10 +152,9 @@ def index():
         exchange_rate=get_adjusted_exchange_rate()
     )
 
-@app.route("/api/rate")
-def api_rate():
-    return jsonify({"rate": get_adjusted_exchange_rate()})
-
+# -------------------
+# 캘린더 API
+# -------------------
 @app.route("/api/events", methods=["GET"])
 def api_get_events():
     init_db()
@@ -246,6 +258,73 @@ def api_delete_event(event_id):
     conn.close()
     return jsonify({"ok": True})
 
+# -------------------
+# 채팅 API
+# -------------------
+@app.route("/api/chat/messages", methods=["GET"])
+def api_chat_messages():
+    init_db()
+    room = (request.args.get("room") or "main").strip() or "main"
+    after_id = request.args.get("after_id", "0")
+    try:
+        after_id = int(after_id)
+    except Exception:
+        after_id = 0
+
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, sender, message, created_at
+        FROM chat_messages
+        WHERE room=? AND id>?
+        ORDER BY id ASC
+        LIMIT 200
+    """, (room, after_id))
+    rows = cur.fetchall()
+    conn.close()
+
+    msgs = []
+    for r in rows:
+        msgs.append({
+            "id": r[0],
+            "sender": r[1] or "익명",
+            "message": r[2],
+            "created_at": r[3] or ""
+        })
+    return jsonify({"ok": True, "messages": msgs})
+
+@app.route("/api/chat/send", methods=["POST"])
+def api_chat_send():
+    init_db()
+    data = request.get_json(force=True)
+
+    room = ((data.get("room") or "main").strip() or "main")
+    sender = (data.get("sender") or "").strip()
+    message = (data.get("message") or "").strip()
+
+    if not message:
+        return jsonify({"ok": False, "error": "empty"}), 400
+
+    if not sender:
+        sender = "익명"
+
+    now_str = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO chat_messages (room, sender, message, created_at) VALUES (?, ?, ?, ?)",
+        (room, sender, message, now_str)
+    )
+    conn.commit()
+    msg_id = cur.lastrowid
+    conn.close()
+
+    return jsonify({"ok": True, "id": msg_id})
+
+# -------------------
+# Memo helpers
+# -------------------
 def load_memo_list():
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
