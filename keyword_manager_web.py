@@ -10,20 +10,35 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
 
+# ✅ Render Disk(영구) 사용: 환경변수 DB_FILE 우선, 없으면 /var/data, 그마저 없으면 로컬
+DEFAULT_DB_PATH = "/var/data/keyword_manager.db"
+DB_FILE = os.environ.get("DB_FILE", DEFAULT_DB_PATH)
+
+# ✅ 환율 캐시 저장소
 cached_rate = {
     "value": None,
     "fetched_date": None
 }
 
+def ensure_db_dir():
+    try:
+        db_dir = os.path.dirname(DB_FILE)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+    except Exception as e:
+        print("⚠️ DB dir create failed:", e)
+
 def init_db():
+    ensure_db_dir()
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
 
+    # ✅ 메모
     cur.execute("CREATE TABLE IF NOT EXISTS memos (keyword TEXT UNIQUE)")
 
+    # ✅ 캘린더 이벤트
     cur.execute("""
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
