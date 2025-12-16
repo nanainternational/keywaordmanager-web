@@ -16,8 +16,8 @@
       --bg: #0b0d10;
       --panel: #11141a;
       --line: rgba(255,255,255,.08);
-      --text: rgba(255,255,255,.92);
-      --muted: rgba(255,255,255,.65);
+      --text: rgba(255,255,255,.90);
+      --muted: rgba(255,255,255,.62);
       --chip: rgba(255,255,255,.08);
       --accent: #4da3ff;
       --danger: #ff5a6a;
@@ -32,6 +32,10 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
       text-rendering: optimizeLegibility;
+
+      /* ✅ 폰트 1 작게 + 얇게 */
+      font-size: 14px;
+      font-weight: 300;
       overscroll-behavior: none;
     }
 
@@ -47,15 +51,15 @@
       align-items: center;
       justify-content: space-between;
       gap: 10px;
-      padding: 8px 10px;
+      padding: 7px 10px;
       background: rgba(255,255,255,.04);
       border: 1px solid var(--line);
       border-radius: 12px;
       margin-bottom: 10px;
-      font-size: 13px;
+      font-size: 12px;
     }
-    .rate-bar .label { color: var(--muted); }
-    .rate-bar .val { font-weight: 700; letter-spacing: .2px; }
+    .rate-bar .label { color: var(--muted); font-weight: 300; }
+    .rate-bar .val { font-weight: 600; letter-spacing: .2px; }
 
     .section {
       background: var(--panel);
@@ -73,15 +77,15 @@
     }
     .section-title h3 {
       margin: 0;
-      font-size: 15px;
-      font-weight: 800;
-      letter-spacing: .2px;
+      font-size: 14px;        /* ✅ 1 작게 */
+      font-weight: 600;       /* ✅ 얇게 */
+      letter-spacing: .15px;
     }
-    .hint { color: var(--muted); font-size: 12px; }
+    .hint { color: var(--muted); font-size: 11px; font-weight: 300; }
 
-    /* ✅ 채팅: 높이를 기존보다 2/3 수준으로(짧게) */
+    /* ✅ 채팅: 높이를 2/3 수준으로 */
     .chat-box {
-      height: 220px; /* 필요하면 180~260 사이로 조정 */
+      height: 220px;
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -101,25 +105,33 @@
       align-items: flex-start;
     }
     .bubble {
-      max-width: 78%;
-      padding: 10px 12px;
+      max-width: 80%;
+      padding: 9px 11px;
       border-radius: 14px;
       background: rgba(255,255,255,.07);
       border: 1px solid var(--line);
       line-height: 1.25;
-      font-size: 14px;
+      font-size: 13px;       /* ✅ 1 작게 */
+      font-weight: 300;      /* ✅ 얇게 */
       word-break: break-word;
     }
+    .bubble b { font-weight: 600; }
     .meta {
       color: var(--muted);
-      font-size: 11px;
+      font-size: 10px;       /* ✅ 1 작게 */
       margin-top: 3px;
+      font-weight: 300;
     }
+
+    /* ✅ 모바일에서 버튼이 박스 밖으로 안 튀어나오게 */
     .chat-input-row {
+      width: 100%;
       display: grid;
-      grid-template-columns: 92px 1fr 72px;
+      grid-template-columns: 82px 1fr 70px;
       gap: 8px;
+      align-items: center;
     }
+    .chat-input-row > * { min-width: 0; } /* ✅ 핵심: grid overflow 방지 */
 
     input, textarea, button {
       font: inherit;
@@ -127,9 +139,10 @@
       outline: none;
     }
 
-    /* ✅ iOS 확대 방지: input font-size 16px 이상 유지 */
+    /* ✅ iOS 확대 방지: input font-size 16px 유지 */
     input[type="text"], textarea {
       font-size: 16px;
+      font-weight: 300;
       background: rgba(255,255,255,.04);
       border: 1px solid var(--line);
       border-radius: 12px;
@@ -137,12 +150,14 @@
     }
 
     button {
+      width: 100%;
       border: 1px solid var(--line);
       background: rgba(255,255,255,.06);
       border-radius: 12px;
-      padding: 10px 12px;
+      padding: 10px 10px;
       cursor: pointer;
-      font-weight: 800;
+      font-weight: 600;
+      font-size: 13px; /* ✅ 1 작게 */
     }
     button.primary {
       background: rgba(77,163,255,.18);
@@ -160,6 +175,7 @@
       gap: 8px;
       margin-bottom: 10px;
     }
+    .memo-row > * { min-width: 0; }
     .memo-list {
       display: flex;
       flex-wrap: wrap;
@@ -173,16 +189,18 @@
       border-radius: 999px;
       background: var(--chip);
       border: 1px solid var(--line);
-      font-size: 14px;
+      font-size: 13px;   /* ✅ 1 작게 */
+      font-weight: 300;
     }
     .chip form { margin: 0; }
     .chip button {
+      width: auto;
       padding: 6px 8px;
       border-radius: 999px;
       font-size: 12px;
     }
 
-    /* ✅ 캘린더: 박스 없이 크게 보이도록 (테두리 제거 + 화면폭 꽉) */
+    /* ✅ 캘린더: 박스 제거 + 크게 */
     .calendar-wrap {
       padding: 0;
       border: none;
@@ -190,18 +208,20 @@
     }
     #calendar {
       width: 100%;
-      min-height: 520px;
+      min-height: 560px;
       background: transparent;
     }
 
-    /* FullCalendar 테마 다크 살짝 */
-    .fc .fc-toolbar-title { font-size: 16px; }
+    /* FullCalendar 다크 + 폰트 얇게/작게 */
+    .fc { font-size: 13px; font-weight: 300; } /* ✅ 1 작게 + 얇게 */
+    .fc .fc-toolbar-title { font-size: 15px; font-weight: 600; }
     .fc .fc-button {
       border-radius: 10px !important;
       border: 1px solid var(--line) !important;
       background: rgba(255,255,255,.06) !important;
       color: var(--text) !important;
       box-shadow: none !important;
+      font-weight: 600 !important;
     }
     .fc .fc-button:hover { background: rgba(255,255,255,.10) !important; }
     .fc-theme-standard td, .fc-theme-standard th {
@@ -211,12 +231,31 @@
       border-color: rgba(255,255,255,.06);
     }
 
+    /* ✅ 이벤트 표기(시간을 끝에 붙이기 위한 기본 스타일) */
+    .ev-row {
+      display: inline-flex;
+      gap: 6px;
+      align-items: baseline;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+    .ev-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ev-time {
+      opacity: .75;
+      flex: 0 0 auto;
+    }
+
     /* ✅ 모바일 최적화 */
     @media (max-width: 480px) {
       .wrap { padding: 10px 10px 16px; }
-      .chat-input-row { grid-template-columns: 84px 1fr 66px; }
+      .chat-input-row { grid-template-columns: 76px 1fr 66px; }
       .chat-box { height: 200px; }
-      #calendar { min-height: 560px; }
+      #calendar { min-height: 620px; }
       .fc .fc-toolbar { flex-wrap: wrap; gap: 6px; }
     }
 
@@ -239,14 +278,14 @@
       border-radius: 16px;
       padding: 12px;
     }
-    .modal h4 { margin: 4px 2px 10px; font-size: 15px; }
+    .modal h4 { margin: 4px 2px 10px; font-size: 14px; font-weight: 600; }
     .modal .grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
     }
     .modal .row { display: grid; gap: 6px; margin-bottom: 8px; }
-    .modal label { color: var(--muted); font-size: 12px; }
+    .modal label { color: var(--muted); font-size: 11px; font-weight: 300; }
     .modal textarea {
       min-height: 88px;
       resize: none;
@@ -273,7 +312,7 @@
     <div class="section">
       <div class="section-title">
         <h3>채팅</h3>
-        <div class="hint">터치/스크롤 최적화</div>
+        <div class="hint">모바일 폭에 맞춤</div>
       </div>
 
       <div class="chat-box">
@@ -316,7 +355,7 @@
     <div class="calendar-wrap">
       <div class="section-title" style="margin: 6px 2px 10px;">
         <h3>캘린더</h3>
-        <div class="hint">터치(탭) 또는 꾹누름(영역선택) → 일정 추가</div>
+        <div class="hint">탭 또는 꾹누름 → 일정 추가</div>
       </div>
       <div id="calendar"></div>
     </div>
@@ -439,7 +478,6 @@
       chatInput.value = "";
       try {
         await jpost("/api/chat/send", { sender, message });
-        // 즉시 갱신
         await pollChatOnce();
       } catch (e) {}
     }
@@ -462,7 +500,7 @@
     });
 
     // =========================
-    // ✅ 캘린더 + 모달 (터치/꾹누름 반응)
+    // ✅ 캘린더 + 모달
     // =========================
     const modalBackdrop = document.getElementById("modalBackdrop");
     const modalTitle = document.getElementById("modalTitle");
@@ -489,7 +527,9 @@
       evMemo.value = payload?.memo || "";
 
       modalBackdrop.style.display = "flex";
-      setTimeout(() => evTitle.focus(), 50);
+
+      // ✅ 키보드 자동으로 안 뜨게: 자동 포커스/강제 focus 제거
+      // (사용자가 입력창을 터치할 때만 키보드 올라옴)
     }
 
     function closeModal() {
@@ -545,7 +585,6 @@
         expandRows: true,
         nowIndicator: true,
 
-        // ✅ 터치/꾹누름 반응 핵심
         selectable: true,
         selectMirror: true,
         longPressDelay: 180,
@@ -573,7 +612,6 @@
 
         // ✅ “꾹누르고 드래그(영역선택)” 하면 추가 모달
         select: (sel) => {
-          // FullCalendar는 end가 "다음날"로 들어올 수 있음 -> 그대로 저장해도 OK
           openModal("add", {
             title: "",
             start: sel.startStr,
@@ -592,6 +630,26 @@
             end: e.endStr || "",
             memo: (e.extendedProps && e.extendedProps.memo) ? e.extendedProps.memo : ""
           });
+        },
+
+        // ✅ 시간 표시를 "끝에" 붙이기 (10a/12p 같은 timeText를 뒤로)
+        eventContent: (arg) => {
+          const wrap = document.createElement("span");
+          wrap.className = "ev-row";
+
+          const title = document.createElement("span");
+          title.className = "ev-title";
+          title.textContent = arg.event.title || "";
+
+          const time = document.createElement("span");
+          time.className = "ev-time";
+          // timeText가 비어있으면(종일 등) 시간 숨김
+          time.textContent = arg.timeText ? ` ${arg.timeText}` : "";
+
+          wrap.appendChild(title);
+          if (arg.timeText) wrap.appendChild(time);
+
+          return { domNodes: [wrap] };
         }
       });
 
