@@ -10,30 +10,50 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-# ===============================
-# ✅ DB 경로 단일 고정 (핵심)
-# ===============================
-DB_FILE = "/var/data/keyword_manager.db"
-
 tz = pytz.timezone("Asia/Seoul")
+
+# ===============================
+# ✅ Render Disk 경로 자동 감지
+# - Render 대시보드에서 Disk Mount Path를 /data 로 해두는 걸 추천
+# - env: DISK_PATH=/data (또는 너가 설정한 mount path)
+# ===============================
+DISK_PATH = os.environ.get("DISK_PATH", "").strip()  # 예: /data
+if not DISK_PATH:
+    DISK_PATH = "data"  # fallback (로컬, 배포시 초기화 가능)
+
+def _safe_mkdir(path: str) -> bool:
+    try:
+        os.makedirs(path, exist_ok=True)
+        testfile = os.path.join(path, ".write_test")
+        with open(testfile, "w", encoding="utf-8") as f:
+            f.write("ok")
+        os.remove(testfile)
+        return True
+    except Exception as e:
+        print(f"⚠️ Dir not writable: {path} ({e})")
+        return False
+
+# ✅ 최종 DB 폴더 결정
+if not _safe_mkdir(DISK_PATH):
+    DISK_PATH = "data"
+    _safe_mkdir(DISK_PATH)
+
+DB_FILE = os.path.join(DISK_PATH, "keyword_manager.db")
+print("✅ DB_FILE:", DB_FILE)
 
 # ===============================
 # ✅ DB 초기화 (테이블만 생성)
 # ===============================
 def init_db():
-    os.makedirs("/var/data", exist_ok=True)
-
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
 
-    # 메모
     cur.execute("""
         CREATE TABLE IF NOT EXISTS memos (
             keyword TEXT UNIQUE
         )
     """)
 
-    # 캘린더
     cur.execute("""
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +66,6 @@ def init_db():
         )
     """)
 
-    # 채팅
     cur.execute("""
         CREATE TABLE IF NOT EXISTS chat_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +86,6 @@ cached_rate = {"value": None, "fetched_date": None}
 
 def get_adjusted_exchange_rate():
     now = datetime.now(tz)
-
     REFRESH_HOUR = 9
     REFRESH_MINUTE = 5
     refresh_key = now.strftime(f"%Y-%m-%d-{REFRESH_HOUR:02d}-{REFRESH_MINUTE:02d}")
@@ -90,16 +108,22 @@ def get_adjusted_exchange_rate():
                 cached_rate["value"] = adjusted
                 cached_rate["fetched_date"] = refresh_key
                 return adjusted
-
     except Exception as e:
         print("환율 오류:", e)
 
     return cached_rate["value"]
 
 # ===============================
+# ✅ Health (UptimeRobot HEAD/GET 대응)
+# ===============================
+@app.route("/health", methods=["GET", "HEAD"])
+def health():
+    return ("", 200)
+
+# ===============================
 # ✅ 메인
 # ===============================
-@app.route("/", methods=["GET", "POST"])
+@app.route("/", methods=["GET", "POST", "HEAD"])
 def index():
     init_db()
 
@@ -159,7 +183,7 @@ def get_events():
 @app.route("/api/events", methods=["POST"])
 def add_event():
     init_db()
-    data = request.get_json()
+    data = request.get_json() or {}
 
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
@@ -167,8 +191,8 @@ def add_event():
         INSERT INTO events (title, start, end, all_day, memo, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
     """, (
-        data["title"],
-        data["start"],
+        data.get("title", ""),
+        data.get("start", ""),
         data.get("end"),
         1 if data.get("allDay") else 0,
         data.get("memo", ""),
@@ -183,17 +207,12 @@ def add_event():
 @app.route("/api/events/<int:event_id>", methods=["PUT"])
 def update_event(event_id):
     init_db()
-    data = request.get_json()
+    data = request.get_json() or {}
 
     fields = []
     values = []
 
-    for key, col in [
-        ("title", "title"),
-        ("start", "start"),
-        ("end", "end"),
-        ("memo", "memo")
-    ]:
+    for key, col in [("title","title"), ("start","start"), ("end","end"), ("memo","memo")]:
         if key in data:
             fields.append(f"{col}=?")
             values.append(data[key])
@@ -212,7 +231,6 @@ def update_event(event_id):
     cur.execute(f"UPDATE events SET {', '.join(fields)} WHERE id=?", values)
     conn.commit()
     conn.close()
-
     return jsonify({"ok": True})
 
 @app.route("/api/events/<int:event_id>", methods=["DELETE"])
@@ -228,7 +246,7 @@ def delete_event(event_id):
 # ===============================
 # ✅ 채팅 API
 # ===============================
-@app.route("/api/chat/messages")
+@app.route("/api/chat/messages", methods=["GET"])
 def chat_messages():
     init_db()
     after_id = int(request.args.get("after_id", 0))
@@ -247,19 +265,20 @@ def chat_messages():
     return jsonify({
         "ok": True,
         "messages": [
-            {
-                "id": r[0],
-                "sender": r[1],
-                "message": r[2],
-                "created_at": r[3]
-            } for r in rows
+            {"id": r[0], "sender": r[1], "message": r[2], "created_at": r[3]}
+            for r in rows
         ]
     })
 
 @app.route("/api/chat/send", methods=["POST"])
 def send_chat():
     init_db()
-    data = request.get_json()
+    data = request.get_json() or {}
+
+    sender = (data.get("sender") or "익명").strip()
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify({"ok": False, "error": "empty_message"}), 400
 
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
@@ -268,8 +287,8 @@ def send_chat():
         VALUES (?, ?, ?, ?)
     """, (
         "main",
-        data.get("sender", "익명"),
-        data["message"],
+        sender,
+        message,
         datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
     ))
     conn.commit()
