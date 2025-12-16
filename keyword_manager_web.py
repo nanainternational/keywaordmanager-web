@@ -59,7 +59,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             start TEXT NOT NULL,
-            end TEXT,
+            end_at TEXT,
             all_day INTEGER DEFAULT 0,
             memo TEXT,
             created_at TEXT
