@@ -12,15 +12,6 @@ CORS(app)
 
 tz = pytz.timezone("Asia/Seoul")
 
-# ===============================
-# ✅ Render Disk 경로 자동 감지
-# - Render 대시보드에서 Disk Mount Path를 /data 로 해두는 걸 추천
-# - env: DISK_PATH=/data (또는 너가 설정한 mount path)
-# ===============================
-DISK_PATH = os.environ.get("DISK_PATH", "").strip()  # 예: /data
-if not DISK_PATH:
-    DISK_PATH = "data"  # fallback (로컬, 배포시 초기화 가능)
-
 def _safe_mkdir(path: str) -> bool:
     try:
         os.makedirs(path, exist_ok=True)
@@ -33,16 +24,33 @@ def _safe_mkdir(path: str) -> bool:
         print(f"⚠️ Dir not writable: {path} ({e})")
         return False
 
-# ✅ 최종 DB 폴더 결정
-if not _safe_mkdir(DISK_PATH):
-    DISK_PATH = "data"
-    _safe_mkdir(DISK_PATH)
+# ===============================
+# ✅ DB 경로 결정 (핵심)
+# 1) DB_FILE 환경변수 있으면 그걸 사용
+# 2) 없으면 DISK_PATH/keyword_manager.db
+# 3) 실패하면 ./data/keyword_manager.db
+# ===============================
+_env_db_file = (os.environ.get("DB_FILE") or "").strip()
+_env_disk_path = (os.environ.get("DISK_PATH") or "").strip()
 
-DB_FILE = os.path.join(DISK_PATH, "keyword_manager.db")
+if _env_db_file:
+    DB_FILE = _env_db_file
+else:
+    if not _env_disk_path:
+        _env_disk_path = "data"
+    DB_FILE = os.path.join(_env_disk_path, "keyword_manager.db")
+
+# DB_FILE의 디렉토리가 writable 아니면 fallback
+_db_dir = os.path.dirname(DB_FILE) or "."
+if not _safe_mkdir(_db_dir):
+    fallback_dir = "data"
+    _safe_mkdir(fallback_dir)
+    DB_FILE = os.path.join(fallback_dir, "keyword_manager.db")
+
 print("✅ DB_FILE:", DB_FILE)
 
 # ===============================
-# ✅ DB 초기화 (테이블만 생성)
+# ✅ DB 초기화
 # ===============================
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -114,7 +122,7 @@ def get_adjusted_exchange_rate():
     return cached_rate["value"]
 
 # ===============================
-# ✅ Health (UptimeRobot HEAD/GET 대응)
+# ✅ Health (UptimeRobot)
 # ===============================
 @app.route("/health", methods=["GET", "HEAD"])
 def health():
@@ -297,9 +305,6 @@ def send_chat():
 
     return jsonify({"ok": True, "id": msg_id})
 
-# ===============================
-# RUN
-# ===============================
 if __name__ == "__main__":
     init_db()
     port = int(os.environ.get("PORT", 5000))
