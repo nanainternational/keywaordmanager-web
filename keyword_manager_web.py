@@ -13,20 +13,17 @@ CORS(app)
 DB_FILE = "keyword_manager.db"
 tz = pytz.timezone("Asia/Seoul")
 
-# ✅ 환율 캐시 저장소
 cached_rate = {
     "value": None,
-    "fetched_date": None  # YYYY-MM-DD-HH-MM
+    "fetched_date": None
 }
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
 
-    # ✅ 메모
     cur.execute("CREATE TABLE IF NOT EXISTS memos (keyword TEXT UNIQUE)")
 
-    # ✅ 캘린더 이벤트
     cur.execute("""
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,16 +39,13 @@ def init_db():
     conn.commit()
     conn.close()
 
-# ✅ 헬스 체크 (Keep Alive 용)
 @app.route("/health")
 def health():
     return "ok", 200
 
-# ✅ 시티은행에서 중국(CNY) 환율 파싱 후 조정
 def get_adjusted_exchange_rate():
     now = datetime.now(tz)
 
-    # ✅ 테스트용 갱신 기준 시간 (원하면 여기만 조절)
     REFRESH_HOUR = 9
     REFRESH_MINUTE = 5
     refresh_time_key = now.strftime(f"%Y-%m-%d-{REFRESH_HOUR:02d}-{REFRESH_MINUTE:02d}")
@@ -88,7 +82,6 @@ def get_adjusted_exchange_rate():
         print("❌ 환율 파싱 실패:", e)
         return cached_rate["value"]
 
-# ✅ 메인: 환율 + 메모만
 @app.route("/", methods=["GET", "POST"])
 def index():
     init_db()
@@ -111,18 +104,10 @@ def index():
         exchange_rate=get_adjusted_exchange_rate()
     )
 
-# ✅ 환율 API (그대로 유지)
 @app.route("/api/rate")
 def api_rate():
     return jsonify({"rate": get_adjusted_exchange_rate()})
 
-# ✅ 캘린더 페이지 (단독)
-@app.route("/calendar")
-def calendar_page():
-    init_db()
-    return render_template("calendar.html")
-
-# ✅ 캘린더 이벤트 목록
 @app.route("/api/events", methods=["GET"])
 def api_get_events():
     init_db()
@@ -144,7 +129,6 @@ def api_get_events():
         })
     return jsonify(events)
 
-# ✅ 캘린더 이벤트 생성
 @app.route("/api/events", methods=["POST"])
 def api_create_event():
     init_db()
@@ -171,7 +155,6 @@ def api_create_event():
 
     return jsonify({"ok": True, "id": event_id})
 
-# ✅ 캘린더 이벤트 수정 (드래그/리사이즈/메모 수정용)
 @app.route("/api/events/<int:event_id>", methods=["PUT"])
 def api_update_event(event_id):
     init_db()
@@ -191,7 +174,6 @@ def api_update_event(event_id):
         conn.close()
         return jsonify({"ok": False, "error": "not found"}), 404
 
-    # 부분 업데이트
     fields = []
     vals = []
 
@@ -223,7 +205,6 @@ def api_update_event(event_id):
 
     return jsonify({"ok": True})
 
-# ✅ 캘린더 이벤트 삭제
 @app.route("/api/events/<int:event_id>", methods=["DELETE"])
 def api_delete_event(event_id):
     init_db()
@@ -234,9 +215,6 @@ def api_delete_event(event_id):
     conn.close()
     return jsonify({"ok": True})
 
-# -------------------
-# Memo DB helpers
-# -------------------
 def load_memo_list():
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
@@ -263,6 +241,6 @@ def delete_memo(keyword):
 
 if __name__ == "__main__":
     init_db()
-    get_adjusted_exchange_rate()  # 앱 시작 시 1회 강제 호출
+    get_adjusted_exchange_rate()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
