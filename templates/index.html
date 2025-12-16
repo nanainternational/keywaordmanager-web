@@ -2,60 +2,211 @@
 <html>
 <head>
   <title>Keyword Manager Web</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css">
   <style>
     body { font-family: Arial, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; }
-    .wrap { max-width:900px; margin:0 auto; padding:24px; }
-    .top { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
-    .card { background:#111827; border:1px solid #1f2937; border-radius:14px; padding:16px; }
+    .wrap { max-width:1100px; margin:0 auto; padding:18px; }
+    .grid { display:grid; grid-template-columns: 1.2fr 0.8fr; gap:14px; }
+    @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+
+    .card { background:#111827; border:1px solid #1f2937; border-radius:14px; padding:14px; }
+    .muted { color:#94a3b8; font-size:12px; }
+
     .rate { font-size:18px; }
-    a.btn { display:inline-block; padding:10px 14px; border-radius:12px; background:#2563eb; color:white; text-decoration:none; }
     input { padding:10px 12px; border-radius:10px; border:1px solid #334155; background:#0b1220; color:#e2e8f0; width:260px; }
     button { padding:10px 12px; border-radius:10px; border:0; background:#22c55e; color:#0b1220; font-weight:700; cursor:pointer; }
-    .memo-item { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #1f2937; gap:10px; }
     .delbtn { background:#ef4444; color:white; }
-    .muted { color:#94a3b8; font-size:12px; }
+    .memo-item { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #1f2937; gap:10px; }
+
+    #calendar { background:#0b1220; border-radius:14px; padding:12px; border:1px solid #1f2937; }
+    .topbar { display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+    .title { font-size:18px; font-weight:800; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="top">
+    <!-- ✅ 캘린더 (메인 상단) -->
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <div class="title">📅 캘린더</div>
+          <div class="muted">드래그로 일정 추가 / 클릭해서 수정·삭제 / 드래그 이동·리사이즈 자동 저장</div>
+        </div>
+        <div class="muted">Keep Alive: /health</div>
+      </div>
+      <div id="calendar"></div>
+    </div>
+
+    <div style="height:14px;"></div>
+
+    <!-- ✅ 하단: 환율 + 메모 -->
+    <div class="grid">
       <div class="card rate">
         ✅ 중국 환율(조정): <b>{{ exchange_rate }}</b>
         <div class="muted">시티은행 기준 파싱 + 조정값</div>
       </div>
-      <a class="btn" href="/calendar">📅 캘린더 열기</a>
-    </div>
 
-    <div style="height:16px;"></div>
+      <div class="card">
+        <h2 style="margin:0 0 10px;">📝 메모</h2>
 
-    <div class="card">
-      <h2 style="margin:0 0 10px;">📝 메모</h2>
+        <form method="POST" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <input name="memo_keyword" placeholder="메모 내용 입력" />
+          <input type="hidden" name="action" value="add_memo" />
+          <button type="submit">추가</button>
+        </form>
 
-      <form method="POST" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-        <input name="memo_keyword" placeholder="메모 내용 입력" />
-        <input type="hidden" name="action" value="add_memo" />
-        <button type="submit">추가</button>
-      </form>
+        <div style="height:12px;"></div>
 
-      <div style="height:12px;"></div>
-
-      <div>
-        {% if memo_list and memo_list|length > 0 %}
-          {% for memo in memo_list %}
-            <div class="memo-item">
-              <div>• {{ memo }}</div>
-              <form method="POST" style="margin:0;">
-                <input type="hidden" name="memo_keyword" value="{{ memo }}" />
-                <input type="hidden" name="action" value="delete_memo" />
-                <button type="submit" class="delbtn">삭제</button>
-              </form>
-            </div>
-          {% endfor %}
-        {% else %}
-          <div class="muted">메모가 없습니다.</div>
-        {% endif %}
+        <div>
+          {% if memo_list and memo_list|length > 0 %}
+            {% for memo in memo_list %}
+              <div class="memo-item">
+                <div>• {{ memo }}</div>
+                <form method="POST" style="margin:0;">
+                  <input type="hidden" name="memo_keyword" value="{{ memo }}" />
+                  <input type="hidden" name="action" value="delete_memo" />
+                  <button type="submit" class="delbtn">삭제</button>
+                </form>
+              </div>
+            {% endfor %}
+          {% else %}
+            <div class="muted">메모가 없습니다.</div>
+          {% endif %}
+        </div>
       </div>
     </div>
   </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+  <script>
+    async function apiGet(url) {
+      const r = await fetch(url, { credentials: "include" });
+      return await r.json();
+    }
+    async function apiPost(url, data) {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include"
+      });
+      return await r.json();
+    }
+    async function apiPut(url, data) {
+      const r = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include"
+      });
+      return await r.json();
+    }
+    async function apiDel(url) {
+      const r = await fetch(url, { method: "DELETE", credentials: "include" });
+      return await r.json();
+    }
+
+    document.addEventListener("DOMContentLoaded", async function() {
+      const events = await apiGet("/api/events");
+
+      const calendarEl = document.getElementById("calendar");
+      const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: "dayGridMonth",
+        height: "auto",
+        selectable: true,
+        editable: true,
+        dayMaxEvents: true,
+        events,
+
+        select: async function(info) {
+          const title = prompt("일정 제목을 입력하세요");
+          if (!title) { calendar.unselect(); return; }
+          const memo = prompt("메모(선택)");
+
+          const payload = {
+            title: title,
+            start: info.startStr,
+            end: info.endStr,
+            allDay: info.allDay,
+            memo: memo || ""
+          };
+
+          const res = await apiPost("/api/events", payload);
+          if (res && res.ok) {
+            calendar.addEvent({
+              id: res.id,
+              title: payload.title,
+              start: payload.start,
+              end: payload.end,
+              allDay: payload.allDay,
+              extendedProps: { memo: payload.memo }
+            });
+          } else {
+            alert("저장 실패");
+          }
+          calendar.unselect();
+        },
+
+        eventClick: async function(info) {
+          const ev = info.event;
+          const currentMemo = (ev.extendedProps && ev.extendedProps.memo) ? ev.extendedProps.memo : "";
+
+          const action = prompt("1) 제목 수정\n2) 메모 수정\n3) 삭제\n\n번호를 입력하세요 (취소=닫기)");
+          if (!action) return;
+
+          if (action === "1") {
+            const newTitle = prompt("새 제목", ev.title);
+            if (!newTitle) return;
+            const res = await apiPut(`/api/events/${ev.id}`, { title: newTitle });
+            if (res && res.ok) ev.setProp("title", newTitle);
+
+          } else if (action === "2") {
+            const newMemo = prompt("메모", currentMemo);
+            if (newMemo === null) return;
+            const res = await apiPut(`/api/events/${ev.id}`, { memo: newMemo });
+            if (res && res.ok) ev.setExtendedProp("memo", newMemo);
+
+          } else if (action === "3") {
+            if (!confirm("정말 삭제할까요?")) return;
+            const res = await apiDel(`/api/events/${ev.id}`);
+            if (res && res.ok) ev.remove();
+
+          } else {
+            alert("1~3 중에서 입력하세요.");
+          }
+        },
+
+        eventDrop: async function(info) {
+          const ev = info.event;
+          const payload = {
+            start: ev.start ? ev.start.toISOString() : null,
+            end: ev.end ? ev.end.toISOString() : null,
+            allDay: ev.allDay
+          };
+          const res = await apiPut(`/api/events/${ev.id}`, payload);
+          if (!(res && res.ok)) {
+            alert("이동 저장 실패 (원복)");
+            info.revert();
+          }
+        },
+
+        eventResize: async function(info) {
+          const ev = info.event;
+          const payload = {
+            start: ev.start ? ev.start.toISOString() : null,
+            end: ev.end ? ev.end.toISOString() : null,
+            allDay: ev.allDay
+          };
+          const res = await apiPut(`/api/events/${ev.id}`, payload);
+          if (!(res && res.ok)) {
+            alert("리사이즈 저장 실패 (원복)");
+            info.revert();
+          }
+        }
+      });
+
+      calendar.render();
+    });
+  </script>
 </body>
 </html>
