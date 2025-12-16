@@ -1,331 +1,606 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="ko">
 <head>
+  <meta charset="utf-8">
+  <!-- ✅ 모바일 입력창 눌렀을 때 확대(줌) 방지 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+
   <title>Keyword Manager Web</title>
 
-  <!-- ✅ 모바일 확대 방지 핵심 -->
-  <meta name="viewport"
-        content="width=device-width,
-                 initial-scale=1,
-                 maximum-scale=1,
-                 user-scalable=no,
-                 viewport-fit=cover">
-
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css">
+  <!-- FullCalendar -->
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
   <style>
-    :root{
-      --bg:#0b1220;
-      --card:#0f172a;
-      --line:#1f2937;
-      --text:#e2e8f0;
-      --muted:#94a3b8;
-      --field:#0b1220;
-      --fieldLine:#334155;
-      --green:#22c55e;
-      --red:#ef4444;
-      --blue:#2563eb;
-      --blueLine:#1d4ed8;
+    :root {
+      --bg: #0b0d10;
+      --panel: #11141a;
+      --line: rgba(255,255,255,.08);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.65);
+      --chip: rgba(255,255,255,.08);
+      --accent: #4da3ff;
+      --danger: #ff5a6a;
     }
 
-    *{ box-sizing:border-box; }
-
-    body{
-      margin:0;
-      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", Arial, sans-serif;
-      background:var(--bg);
-      color:var(--text);
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      overscroll-behavior: none;
     }
 
-    .wrap{
-      max-width:560px;
-      margin:0 auto;
-      padding:10px;
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 10px 10px 16px;
     }
 
-    .card{
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:16px;
-      padding:12px;
+    /* ✅ 환율 섹션: 최소화(작게) */
+    .rate-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+    .rate-bar .label { color: var(--muted); }
+    .rate-bar .val { font-weight: 700; letter-spacing: .2px; }
+
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 2px 2px 10px;
+    }
+    .section-title h3 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: .2px;
+    }
+    .hint { color: var(--muted); font-size: 12px; }
+
+    /* ✅ 채팅: 높이를 기존보다 2/3 수준으로(짧게) */
+    .chat-box {
+      height: 220px; /* 필요하면 180~260 사이로 조정 */
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .chat-messages {
+      flex: 1;
+      overflow: auto;
+      padding: 8px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+    }
+    .msg {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: flex-start;
+    }
+    .bubble {
+      max-width: 78%;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.07);
+      border: 1px solid var(--line);
+      line-height: 1.25;
+      font-size: 14px;
+      word-break: break-word;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 3px;
+    }
+    .chat-input-row {
+      display: grid;
+      grid-template-columns: 92px 1fr 72px;
+      gap: 8px;
     }
 
-    .gap{ height:10px; }
-
-    /* ===== 환율 ===== */
-    .ratebar{
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:14px;
-      padding:8px 10px;
-      display:flex;
-      justify-content:space-between;
-      font-size:12px;
+    input, textarea, button {
+      font: inherit;
+      color: var(--text);
+      outline: none;
     }
 
-    /* ===== 공통 ===== */
-    h3{
-      margin:0;
-      font-size:15px;
-      font-weight:800;
-    }
-    .sub{
-      margin-top:4px;
-      font-size:11px;
-      color:var(--muted);
+    /* ✅ iOS 확대 방지: input font-size 16px 이상 유지 */
+    input[type="text"], textarea {
+      font-size: 16px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
     }
 
-    input, textarea{
-      width:100%;
-      padding:12px;
-      border-radius:12px;
-      border:1px solid var(--fieldLine);
-      background:var(--field);
-      color:var(--text);
-      font-size:16px;          /* ✅ 확대 방지 핵심 */
-      outline:none;
+    button {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.06);
+      border-radius: 12px;
+      padding: 10px 12px;
+      cursor: pointer;
+      font-weight: 800;
+    }
+    button.primary {
+      background: rgba(77,163,255,.18);
+      border-color: rgba(77,163,255,.28);
+    }
+    button.danger {
+      background: rgba(255,90,106,.16);
+      border-color: rgba(255,90,106,.26);
     }
 
-    textarea{
-      resize:none;
+    /* ✅ 메모 */
+    .memo-row {
+      display: grid;
+      grid-template-columns: 1fr 92px;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .memo-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: var(--chip);
+      border: 1px solid var(--line);
+      font-size: 14px;
+    }
+    .chip form { margin: 0; }
+    .chip button {
+      padding: 6px 8px;
+      border-radius: 999px;
+      font-size: 12px;
     }
 
-    button{
-      width:100%;
-      padding:12px;
-      border-radius:12px;
-      border:0;
-      font-weight:800;
-      font-size:14px;
+    /* ✅ 캘린더: 박스 없이 크게 보이도록 (테두리 제거 + 화면폭 꽉) */
+    .calendar-wrap {
+      padding: 0;
+      border: none;
+      background: transparent;
+    }
+    #calendar {
+      width: 100%;
+      min-height: 520px;
+      background: transparent;
     }
 
-    .btn-green{ background:var(--green); color:#03140b; }
-    .btn-red{ background:var(--red); color:#fff; }
-    .btn-ghost{ background:#334155; color:#fff; }
-
-    /* =====================
-       ✅ 채팅 (높이 2/3)
-       ===================== */
-    .chat-box{
-      margin-top:10px;
-      background:var(--bg);
-      border:1px solid var(--line);
-      border-radius:14px;
-      padding:10px;
-      height:30vh;        /* 🔥 기존 ~45vh → 30vh */
-      min-height:220px;
-      overflow-y:auto;
+    /* FullCalendar 테마 다크 살짝 */
+    .fc .fc-toolbar-title { font-size: 16px; }
+    .fc .fc-button {
+      border-radius: 10px !important;
+      border: 1px solid var(--line) !important;
+      background: rgba(255,255,255,.06) !important;
+      color: var(--text) !important;
+      box-shadow: none !important;
+    }
+    .fc .fc-button:hover { background: rgba(255,255,255,.10) !important; }
+    .fc-theme-standard td, .fc-theme-standard th {
+      border-color: rgba(255,255,255,.06);
+    }
+    .fc .fc-scrollgrid, .fc .fc-scrollgrid-section > * {
+      border-color: rgba(255,255,255,.06);
     }
 
-    .msg-row{ display:flex; margin:8px 0; }
-    .msg-row.me{ justify-content:flex-end; }
-
-    .bubble{
-      max-width:85%;
-      padding:10px 12px;
-      border-radius:14px;
-      background:#111827;
-      border:1px solid var(--line);
-      font-size:13px;
-      line-height:1.35;
-      word-break:break-word;
+    /* ✅ 모바일 최적화 */
+    @media (max-width: 480px) {
+      .wrap { padding: 10px 10px 16px; }
+      .chat-input-row { grid-template-columns: 84px 1fr 66px; }
+      .chat-box { height: 200px; }
+      #calendar { min-height: 560px; }
+      .fc .fc-toolbar { flex-wrap: wrap; gap: 6px; }
     }
 
-    .msg-row.me .bubble{
-      background:var(--blue);
-      border:1px solid var(--blueLine);
-      color:#fff;
+    /* ✅ 모달 */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 14px;
+      z-index: 9999;
     }
-
-    .meta{
-      margin-top:4px;
-      font-size:10px;
-      color:var(--muted);
+    .modal {
+      width: 100%;
+      max-width: 520px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
     }
-
-    .chat-input{
-      margin-top:8px;
-      display:flex;
-      flex-direction:column;
-      gap:8px;
+    .modal h4 { margin: 4px 2px 10px; font-size: 15px; }
+    .modal .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
     }
-
-    .chat-actions{
-      display:flex;
-      gap:8px;
+    .modal .row { display: grid; gap: 6px; margin-bottom: 8px; }
+    .modal label { color: var(--muted); font-size: 12px; }
+    .modal textarea {
+      min-height: 88px;
+      resize: none;
     }
-
-    .chat-actions button{
-      width:50%;
+    .modal .actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 10px;
     }
-
-    /* ===== 메모 ===== */
-    .memo-item{
-      display:flex;
-      justify-content:space-between;
-      gap:10px;
-      padding:8px 0;
-      border-bottom:1px solid var(--line);
-      font-size:13px;
-    }
-
-    /* ===== 캘린더 ===== */
-    #calendar{
-      margin-top:10px;
-      background:var(--bg);
-      border:1px solid var(--line);
-      border-radius:14px;
-      padding:6px;
-    }
-
-    .fc .fc-toolbar-title{ font-size:14px; }
-    .fc .fc-button{ font-size:12px; padding:6px 8px; }
   </style>
 </head>
 
 <body>
-<div class="wrap">
+  <div class="wrap">
 
-  <!-- 환율 -->
-  <div class="ratebar">
-    <div>🇨🇳 CNY <b>{{ exchange_rate }}</b></div>
+    <!-- ✅ 환율 (최소화) -->
+    <div class="rate-bar">
+      <div class="label">중국(CNY) 조정 환율</div>
+      <div class="val">{{ exchange_rate if exchange_rate else "-" }}</div>
+    </div>
+
+    <!-- ✅ 채팅 -->
+    <div class="section">
+      <div class="section-title">
+        <h3>채팅</h3>
+        <div class="hint">터치/스크롤 최적화</div>
+      </div>
+
+      <div class="chat-box">
+        <div id="chatMessages" class="chat-messages"></div>
+
+        <div class="chat-input-row">
+          <input id="chatSender" type="text" placeholder="이름" value="나나" autocomplete="off" inputmode="text">
+          <input id="chatInput" type="text" placeholder="메시지 입력..." autocomplete="off" inputmode="text">
+          <button class="primary" id="sendBtn">전송</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ✅ 메모 -->
+    <div class="section">
+      <div class="section-title">
+        <h3>메모</h3>
+        <div class="hint">업데이트해도 데이터 유지</div>
+      </div>
+
+      <form method="POST" class="memo-row">
+        <input type="text" name="memo_keyword" placeholder="메모 추가..." autocomplete="off" inputmode="text">
+        <button class="primary" type="submit" name="action" value="add_memo">추가</button>
+      </form>
+
+      <div class="memo-list">
+        {% for m in memo_list %}
+          <div class="chip">
+            <span>{{ m }}</span>
+            <form method="POST">
+              <input type="hidden" name="memo_keyword" value="{{ m }}">
+              <button class="danger" type="submit" name="action" value="delete_memo">삭제</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- ✅ 캘린더 (박스 제거 + 크게) -->
+    <div class="calendar-wrap">
+      <div class="section-title" style="margin: 6px 2px 10px;">
+        <h3>캘린더</h3>
+        <div class="hint">터치(탭) 또는 꾹누름(영역선택) → 일정 추가</div>
+      </div>
+      <div id="calendar"></div>
+    </div>
+
   </div>
 
-  <div class="gap"></div>
+  <!-- ✅ 일정 추가/수정 모달 -->
+  <div id="modalBackdrop" class="modal-backdrop">
+    <div class="modal">
+      <h4 id="modalTitle">일정 추가</h4>
 
-  <!-- ================= 채팅 ================= -->
-  <div class="card">
-    <h3>💬 채팅</h3>
-    <div class="sub">2초 자동 새로고침</div>
+      <div class="row">
+        <label>제목</label>
+        <input id="evTitle" type="text" placeholder="예: 미팅 / 발주 / 상담" autocomplete="off" inputmode="text">
+      </div>
 
-    <input id="chatName" placeholder="닉네임" />
+      <div class="grid">
+        <div class="row">
+          <label>시작</label>
+          <input id="evStart" type="text" placeholder="YYYY-MM-DD 또는 YYYY-MM-DDTHH:mm" autocomplete="off" inputmode="text">
+        </div>
+        <div class="row">
+          <label>끝(선택)</label>
+          <input id="evEnd" type="text" placeholder="YYYY-MM-DD 또는 YYYY-MM-DDTHH:mm" autocomplete="off" inputmode="text">
+        </div>
+      </div>
 
-    <div id="chatBox" class="chat-box"></div>
+      <div class="row">
+        <label>메모(선택)</label>
+        <textarea id="evMemo" placeholder="내용/메모"></textarea>
+      </div>
 
-    <div class="chat-input">
-      <textarea id="chatMsg" placeholder="메시지 입력 (Enter 전송)"></textarea>
-      <div class="chat-actions">
-        <button id="sendBtn" class="btn-green">전송</button>
-        <button id="clearBtn" class="btn-ghost">비우기</button>
+      <div class="actions">
+        <button id="evDelete" class="danger" style="display:none;">삭제</button>
+        <button id="evCancel">취소</button>
+        <button id="evSave" class="primary">저장</button>
       </div>
     </div>
   </div>
 
-  <div class="gap"></div>
-
-  <!-- ================= 메모 ================= -->
-  <div class="card">
-    <h3>📝 메모</h3>
-
-    <form method="POST">
-      <input name="memo_keyword" placeholder="메모 입력">
-      <input type="hidden" name="action" value="add_memo">
-      <div class="gap"></div>
-      <button class="btn-green">추가</button>
-    </form>
-
-    {% for memo in memo_list %}
-      <div class="memo-item">
-        <div>• {{ memo }}</div>
-        <form method="POST">
-          <input type="hidden" name="memo_keyword" value="{{ memo }}">
-          <input type="hidden" name="action" value="delete_memo">
-          <button class="btn-red" style="width:auto;">삭제</button>
-        </form>
-      </div>
-    {% endfor %}
-  </div>
-
-  <div class="gap"></div>
-
-  <!-- ================= 캘린더 ================= -->
-  <div class="card">
-    <h3>📅 캘린더</h3>
-    <div class="sub">드래그 추가 · 클릭 수정</div>
-    <div id="calendar"></div>
-  </div>
-
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-<script>
-/* ================= 채팅 ================= */
-let lastId = 0;
-
-function escapeHtml(s){
-  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-}
-
-async function loadChat(){
-  const name = document.getElementById("chatName").value;
-  const res = await fetch(`/api/chat/messages?after_id=${lastId}`);
-  const data = await res.json();
-  if(!data.ok) return;
-
-  data.messages.forEach(m=>{
-    lastId = Math.max(lastId, m.id);
-    const row = document.createElement("div");
-    row.className = "msg-row" + (m.sender === name ? " me":"");
-    row.innerHTML = `
-      <div class="bubble">
-        ${m.sender !== name ? "<b>"+escapeHtml(m.sender)+"</b><br>" : ""}
-        ${escapeHtml(m.message)}
-        <div class="meta">${m.created_at}</div>
-      </div>`;
-    document.getElementById("chatBox").appendChild(row);
-  });
-
-  const box = document.getElementById("chatBox");
-  box.scrollTop = box.scrollHeight;
-}
-
-async function sendChat(){
-  const name = document.getElementById("chatName").value || "익명";
-  const msgEl = document.getElementById("chatMsg");
-  const msg = msgEl.value.trim();
-  if(!msg) return;
-  msgEl.value = "";
-
-  await fetch("/api/chat/send",{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({ sender:name, message:msg })
-  });
-
-  loadChat();
-}
-
-document.getElementById("sendBtn").onclick = sendChat;
-document.getElementById("clearBtn").onclick = ()=> {
-  document.getElementById("chatBox").innerHTML="";
-};
-
-document.getElementById("chatMsg").addEventListener("keydown",e=>{
-  if(e.key==="Enter" && !e.shiftKey){
-    e.preventDefault();
-    sendChat();
-  }
-});
-
-setInterval(loadChat,2000);
-
-/* ================= 캘린더 ================= */
-(async ()=>{
-  const res = await fetch("/api/events");
-  const events = await res.json();
-
-  const calendar = new FullCalendar.Calendar(
-    document.getElementById("calendar"),
-    {
-      initialView:"dayGridMonth",
-      height:"auto",
-      events,
-      selectable:true,
-      editable:true
+  <script>
+    // =========================
+    // ✅ 공통 fetch 헬퍼
+    // =========================
+    async function jget(url) {
+      const r = await fetch(url, { cache: "no-store" });
+      return await r.json();
     }
-  );
-  calendar.render();
-})();
-</script>
+    async function jpost(url, body) {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      return await r.json();
+    }
+    async function jput(url, body) {
+      const r = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      return await r.json();
+    }
+    async function jdel(url) {
+      const r = await fetch(url, { method: "DELETE" });
+      return await r.json();
+    }
+
+    // =========================
+    // ✅ 채팅
+    // =========================
+    let lastChatId = 0;
+    const chatBox = document.getElementById("chatMessages");
+    const chatInput = document.getElementById("chatInput");
+    const chatSender = document.getElementById("chatSender");
+    const sendBtn = document.getElementById("sendBtn");
+
+    function appendMsg(m) {
+      const wrap = document.createElement("div");
+      wrap.className = "msg";
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.innerHTML = `<b>${(m.sender || "익명")}</b><div style="height:6px"></div>${escapeHtml(m.message)}`;
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = m.created_at || "";
+      const col = document.createElement("div");
+      col.appendChild(bubble);
+      col.appendChild(meta);
+      wrap.appendChild(col);
+      chatBox.appendChild(wrap);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function escapeHtml(s) {
+      return (s || "").replace(/[&<>"']/g, (c) => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      }[c]));
+    }
+
+    async function pollChat() {
+      try {
+        const data = await jget(`/api/chat/messages?room=main&after_id=${lastChatId}`);
+        if (data && data.ok && Array.isArray(data.messages)) {
+          for (const m of data.messages) {
+            appendMsg(m);
+            lastChatId = Math.max(lastChatId, m.id);
+          }
+        }
+      } catch (e) {}
+      setTimeout(pollChat, 2000);
+    }
+
+    async function sendChat() {
+      const sender = (chatSender.value || "익명").trim();
+      const message = (chatInput.value || "").trim();
+      if (!message) return;
+
+      chatInput.value = "";
+      try {
+        await jpost("/api/chat/send", { sender, message });
+        // 즉시 갱신
+        await pollChatOnce();
+      } catch (e) {}
+    }
+
+    async function pollChatOnce() {
+      try {
+        const data = await jget(`/api/chat/messages?room=main&after_id=${lastChatId}`);
+        if (data && data.ok && Array.isArray(data.messages)) {
+          for (const m of data.messages) {
+            appendMsg(m);
+            lastChatId = Math.max(lastChatId, m.id);
+          }
+        }
+      } catch (e) {}
+    }
+
+    sendBtn.addEventListener("click", sendChat);
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendChat();
+    });
+
+    // =========================
+    // ✅ 캘린더 + 모달 (터치/꾹누름 반응)
+    // =========================
+    const modalBackdrop = document.getElementById("modalBackdrop");
+    const modalTitle = document.getElementById("modalTitle");
+    const evTitle = document.getElementById("evTitle");
+    const evStart = document.getElementById("evStart");
+    const evEnd = document.getElementById("evEnd");
+    const evMemo = document.getElementById("evMemo");
+    const evSave = document.getElementById("evSave");
+    const evCancel = document.getElementById("evCancel");
+    const evDelete = document.getElementById("evDelete");
+
+    let currentEventId = null;
+    let calendar = null;
+
+    function openModal(mode, payload) {
+      currentEventId = payload?.id ?? null;
+
+      modalTitle.textContent = mode === "edit" ? "일정 수정" : "일정 추가";
+      evDelete.style.display = mode === "edit" ? "inline-flex" : "none";
+
+      evTitle.value = payload?.title || "";
+      evStart.value = payload?.start || "";
+      evEnd.value = payload?.end || "";
+      evMemo.value = payload?.memo || "";
+
+      modalBackdrop.style.display = "flex";
+      setTimeout(() => evTitle.focus(), 50);
+    }
+
+    function closeModal() {
+      modalBackdrop.style.display = "none";
+      currentEventId = null;
+    }
+
+    evCancel.addEventListener("click", closeModal);
+    modalBackdrop.addEventListener("click", (e) => {
+      if (e.target === modalBackdrop) closeModal();
+    });
+
+    evSave.addEventListener("click", async () => {
+      const title = (evTitle.value || "").trim();
+      const start = (evStart.value || "").trim();
+      const end = (evEnd.value || "").trim();
+      const memo = (evMemo.value || "").trim();
+
+      if (!title || !start) return;
+
+      try {
+        if (currentEventId) {
+          await jput(`/api/events/${currentEventId}`, {
+            title, start, end: end || null, memo
+          });
+        } else {
+          await jpost("/api/events", {
+            title, start, end: end || null, allDay: false, memo
+          });
+        }
+        closeModal();
+        calendar.refetchEvents();
+      } catch (e) {}
+    });
+
+    evDelete.addEventListener("click", async () => {
+      if (!currentEventId) return;
+      if (!confirm("이 일정을 삭제할까요?")) return;
+
+      try {
+        await jdel(`/api/events/${currentEventId}`);
+        closeModal();
+        calendar.refetchEvents();
+      } catch (e) {}
+    });
+
+    async function initCalendar() {
+      const calEl = document.getElementById("calendar");
+
+      calendar = new FullCalendar.Calendar(calEl, {
+        initialView: "dayGridMonth",
+        height: "auto",
+        expandRows: true,
+        nowIndicator: true,
+
+        // ✅ 터치/꾹누름 반응 핵심
+        selectable: true,
+        selectMirror: true,
+        longPressDelay: 180,
+        selectLongPressDelay: 180,
+
+        // ✅ 일정 로드
+        events: async (info, success, failure) => {
+          try {
+            const data = await jget("/api/events");
+            success(data || []);
+          } catch (e) {
+            failure(e);
+          }
+        },
+
+        // ✅ “탭(터치)” 하면 추가 모달
+        dateClick: (arg) => {
+          openModal("add", {
+            title: "",
+            start: arg.dateStr,
+            end: "",
+            memo: ""
+          });
+        },
+
+        // ✅ “꾹누르고 드래그(영역선택)” 하면 추가 모달
+        select: (sel) => {
+          // FullCalendar는 end가 "다음날"로 들어올 수 있음 -> 그대로 저장해도 OK
+          openModal("add", {
+            title: "",
+            start: sel.startStr,
+            end: sel.endStr || "",
+            memo: ""
+          });
+        },
+
+        // ✅ 기존 이벤트 탭하면 수정/삭제
+        eventClick: (info) => {
+          const e = info.event;
+          openModal("edit", {
+            id: e.id,
+            title: e.title,
+            start: e.startStr,
+            end: e.endStr || "",
+            memo: (e.extendedProps && e.extendedProps.memo) ? e.extendedProps.memo : ""
+          });
+        }
+      });
+
+      calendar.render();
+    }
+
+    // 시작
+    pollChat();
+    initCalendar();
+  </script>
 </body>
 </html>
