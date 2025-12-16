@@ -1,8 +1,7 @@
-Flask
-requests
-pandas
-pytz
-chardet
-gunicorn
-flask-cors
-beautifulsoup4
+Flask==3.0.3
+Flask-Cors==4.0.1
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.36
+psycopg2-binary==2.9.9
+python-dotenv==1.0.1
+requests==2.32.3
