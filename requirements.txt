@@ -9,3 +9,4 @@ gunicorn==21.2.0
 pytz==2025.2
 beautifulsoup4==4.12.3
 lxml==5.2.2
+psycopg[binary]
