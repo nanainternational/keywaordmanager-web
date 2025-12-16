@@ -1,10 +1,8 @@
-from flask import Flask, render_template, request, send_file, jsonify
+from flask import Flask, render_template, request, jsonify
 import sqlite3
-import pandas as pd
 from datetime import datetime
 import pytz
 import os
-import chardet
 import requests
 from bs4 import BeautifulSoup
 from flask_cors import CORS
@@ -21,20 +19,41 @@ cached_rate = {
     "fetched_date": None  # YYYY-MM-DD-HH-MM
 }
 
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+
+    # ✅ 메모
+    cur.execute("CREATE TABLE IF NOT EXISTS memos (keyword TEXT UNIQUE)")
+
+    # ✅ 캘린더 이벤트
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            start TEXT NOT NULL,
+            end TEXT,
+            all_day INTEGER DEFAULT 0,
+            memo TEXT,
+            created_at TEXT
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
 # ✅ 헬스 체크 (Keep Alive 용)
 @app.route("/health")
 def health():
     return "ok", 200
 
-# ✅ 시티은행 기준 - 두 번째 <li> = 중국(CNY) 환율
+# ✅ 시티은행에서 중국(CNY) 환율 파싱 후 조정
 def get_adjusted_exchange_rate():
     now = datetime.now(tz)
-    now_key = now.strftime("%Y-%m-%d-%H-%M")
 
-    # ✅ 테스트용 갱신 기준 시간 설정 (여기만 수정해서 원하는 시간으로 테스트 가능)
+    # ✅ 테스트용 갱신 기준 시간 (원하면 여기만 조절)
     REFRESH_HOUR = 9
     REFRESH_MINUTE = 5
-
     refresh_time_key = now.strftime(f"%Y-%m-%d-{REFRESH_HOUR:02d}-{REFRESH_MINUTE:02d}")
 
     if cached_rate["value"] and cached_rate["fetched_date"] == refresh_time_key:
@@ -69,142 +88,162 @@ def get_adjusted_exchange_rate():
         print("❌ 환율 파싱 실패:", e)
         return cached_rate["value"]
 
+# ✅ 메인: 환율 + 메모만
 @app.route("/", methods=["GET", "POST"])
 def index():
-    keyword = ""
-    log = []
-    selected_channel = request.form.get("selected_channel", "")
-
+    init_db()
     memo_list = load_memo_list()
-    history_list = load_history_list()
-    show_history = False
 
     if request.method == "POST":
         action = request.form.get("action")
-        keyword = request.form.get("keyword", "").strip()
         memo_keyword = request.form.get("memo_keyword", "").strip()
 
-        if action == "record":
-            log = record_keyword(keyword, selected_channel)
-        elif action == "check":
-            if keyword.lower() == "all":
-                log = []
-                show_history = True
-            else:
-                log = check_history(keyword)
-        elif action == "add_memo":
+        if action == "add_memo":
             add_memo(memo_keyword)
-            memo_list = load_memo_list()
         elif action == "delete_memo":
             delete_memo(memo_keyword)
-            memo_list = load_memo_list()
 
-    channels = ["지마켓", "쿠팡", "지그재그", "도매꾹", "에이블리", "4910"]
+        memo_list = load_memo_list()
 
     return render_template(
         "index.html",
-        keyword=keyword,
-        log=log,
         memo_list=memo_list,
-        history_list=history_list,
-        channels=channels,
-        selected_channel=selected_channel,
-        show_history=show_history,
         exchange_rate=get_adjusted_exchange_rate()
     )
 
-@app.route("/rate")
-def rate_page():
-    return render_template("rate.html", exchange_rate=get_adjusted_exchange_rate())
-
+# ✅ 환율 API (그대로 유지)
 @app.route("/api/rate")
 def api_rate():
-    return jsonify({
-        "rate": get_adjusted_exchange_rate()
-    })
+    return jsonify({"rate": get_adjusted_exchange_rate()})
 
-def record_keyword(keyword, channel):
-    logs = []
-    if not keyword:
-        logs.append("❌ 키워드를 입력하세요.")
-        return logs
-    if not channel:
-        logs.append("❌ 채널을 선택하세요.")
-        return logs
+# ✅ 캘린더 페이지 (단독)
+@app.route("/calendar")
+def calendar_page():
+    init_db()
+    return render_template("calendar.html")
+
+# ✅ 캘린더 이벤트 목록
+@app.route("/api/events", methods=["GET"])
+def api_get_events():
+    init_db()
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute("SELECT id, title, start, end, all_day, memo FROM events ORDER BY id DESC")
+    rows = cur.fetchall()
+    conn.close()
+
+    events = []
+    for r in rows:
+        events.append({
+            "id": r[0],
+            "title": r[1],
+            "start": r[2],
+            "end": r[3],
+            "allDay": bool(r[4]),
+            "extendedProps": {"memo": r[5] or ""}
+        })
+    return jsonify(events)
+
+# ✅ 캘린더 이벤트 생성
+@app.route("/api/events", methods=["POST"])
+def api_create_event():
+    init_db()
+    data = request.get_json(force=True)
+
+    title = (data.get("title") or "").strip()
+    start = (data.get("start") or "").strip()
+    end = (data.get("end") or "").strip() if data.get("end") else None
+    all_day = 1 if data.get("allDay") else 0
+    memo = (data.get("memo") or "").strip()
+
+    if not title or not start:
+        return jsonify({"ok": False, "error": "title/start required"}), 400
 
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS history (
-            keyword TEXT, channel TEXT, created_at TEXT
-        )
-    """)
-    cur.execute("SELECT * FROM history WHERE keyword=? AND channel=?", (keyword, channel))
-    duplicate = cur.fetchone()
-
-    if duplicate:
-        logs.append("⚠️ 이미 기록됨")
-    else:
-        now = datetime.now(tz).strftime("%Y-%m-%d")
-        cur.execute("""
-            INSERT INTO history (keyword, channel, created_at) VALUES (?, ?, ?)
-        """, (keyword, channel, now))
-        conn.commit()
-        logs.append(f"✅ 기록 완료: {keyword} - {channel}")
-
+    cur.execute(
+        "INSERT INTO events (title, start, end, all_day, memo, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (title, start, end, all_day, memo, datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S"))
+    )
+    conn.commit()
+    event_id = cur.lastrowid
     conn.close()
-    export_combined_csv()
-    return logs
 
-def check_history(keyword):
-    logs = []
+    return jsonify({"ok": True, "id": event_id})
+
+# ✅ 캘린더 이벤트 수정 (드래그/리사이즈/메모 수정용)
+@app.route("/api/events/<int:event_id>", methods=["PUT"])
+def api_update_event(event_id):
+    init_db()
+    data = request.get_json(force=True)
+
+    title = data.get("title")
+    start = data.get("start")
+    end = data.get("end")
+    all_day = 1 if data.get("allDay") else 0 if data.get("allDay") is not None else None
+    memo = data.get("memo")
+
     conn = sqlite3.connect(DB_FILE)
-    df = pd.read_sql_query("SELECT rowid AS id, * FROM history", conn)
+    cur = conn.cursor()
+
+    cur.execute("SELECT id FROM events WHERE id=?", (event_id,))
+    if not cur.fetchone():
+        conn.close()
+        return jsonify({"ok": False, "error": "not found"}), 404
+
+    # 부분 업데이트
+    fields = []
+    vals = []
+
+    if title is not None:
+        fields.append("title=?")
+        vals.append((title or "").strip())
+    if start is not None:
+        fields.append("start=?")
+        vals.append((start or "").strip())
+    if end is not None:
+        fields.append("end=?")
+        vals.append((end or "").strip() if end else None)
+    if all_day is not None:
+        fields.append("all_day=?")
+        vals.append(all_day)
+    if memo is not None:
+        fields.append("memo=?")
+        vals.append((memo or "").strip())
+
+    if not fields:
+        conn.close()
+        return jsonify({"ok": True})
+
+    vals.append(event_id)
+    sql = f"UPDATE events SET {', '.join(fields)} WHERE id=?"
+    cur.execute(sql, tuple(vals))
+    conn.commit()
     conn.close()
 
-    if keyword and keyword.lower() != "all":
-        df = df[df['keyword'] == keyword]
+    return jsonify({"ok": True})
 
-    if not df.empty:
-        logs.append(f"🔍 이력 {len(df)}건:")
-        for _, row in df.iterrows():
-            logs.append(f"  📌 {row['keyword']} | {row['channel']} | {row['created_at']}")
-    else:
-        logs.append("ℹ️ 이력이 없습니다.")
-    return logs
-
-def export_combined_csv():
+# ✅ 캘린더 이벤트 삭제
+@app.route("/api/events/<int:event_id>", methods=["DELETE"])
+def api_delete_event(event_id):
+    init_db()
     conn = sqlite3.connect(DB_FILE)
-    df_history = pd.read_sql_query("SELECT * FROM history", conn)
-    df_history.insert(0, "table", "history")
-
-    df_memos = pd.read_sql_query("SELECT keyword FROM memos", conn)
-    df_memos["table"] = "memos"
-    df_memos["channel"] = None
-    df_memos["created_at"] = None
-    df_memos = df_memos[["table", "keyword", "channel", "created_at"]]
-
-    df_all = pd.concat([df_history, df_memos], ignore_index=True)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM events WHERE id=?", (event_id,))
+    conn.commit()
     conn.close()
-    df_all.to_csv("backup.csv", index=False)
+    return jsonify({"ok": True})
 
+# -------------------
+# Memo DB helpers
+# -------------------
 def load_memo_list():
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
-    cur.execute("CREATE TABLE IF NOT EXISTS memos (keyword TEXT UNIQUE)")
-    cur.execute("SELECT keyword FROM memos")
+    cur.execute("SELECT keyword FROM memos ORDER BY keyword ASC")
     memos = [row[0] for row in cur.fetchall()]
     conn.close()
     return memos
-
-def load_history_list():
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("SELECT rowid AS id, * FROM history")
-    rows = [{"id": row[0], "keyword": row[1], "channel": row[2], "created_at": row[3]}
-            for row in cur.fetchall()]
-    conn.close()
-    return rows
 
 def add_memo(keyword):
     if keyword:
@@ -213,7 +252,6 @@ def add_memo(keyword):
         cur.execute("INSERT OR IGNORE INTO memos (keyword) VALUES (?)", (keyword,))
         conn.commit()
         conn.close()
-        export_combined_csv()
 
 def delete_memo(keyword):
     if keyword:
@@ -222,64 +260,9 @@ def delete_memo(keyword):
         cur.execute("DELETE FROM memos WHERE keyword=?", (keyword,))
         conn.commit()
         conn.close()
-        export_combined_csv()
-
-@app.route("/delete_history", methods=["POST"])
-def delete_history():
-    data = request.get_json()
-    row_id = data.get("id")
-    if row_id:
-        conn = sqlite3.connect(DB_FILE)
-        cur = conn.cursor()
-        cur.execute("DELETE FROM history WHERE rowid=?", (row_id,))
-        conn.commit()
-        conn.close()
-        export_combined_csv()
-        return {"status": "ok"}
-    else:
-        return {"status": "error"}
-
-@app.route("/download_all")
-def download_all():
-    export_combined_csv()
-    return send_file("backup.csv", as_attachment=True)
-
-@app.route("/upload_all", methods=["GET", "POST"])
-def upload_all():
-    if request.method == "POST":
-        f = request.files["file"]
-        if f and f.filename.endswith(".csv"):
-            f.save("uploaded_backup.csv")
-            with open("uploaded_backup.csv", "rb") as rawdata:
-                result = chardet.detect(rawdata.read())
-                detected_encoding = result['encoding']
-            try:
-                df_all = pd.read_csv("uploaded_backup.csv", encoding=detected_encoding)
-            except Exception:
-                df_all = pd.read_csv("uploaded_backup.csv", encoding="utf-8-sig")
-
-            if "table" not in df_all.columns:
-                return "❌ Error: This CSV does not have a 'table' column. Use the combined backup only."
-
-            df_history = df_all[df_all["table"] == "history"].drop(columns=["table"])
-            df_memos = df_all[df_all["table"] == "memos"]["keyword"].drop_duplicates().to_frame()
-
-            conn = sqlite3.connect(DB_FILE)
-            df_history.to_sql("history", conn, if_exists="replace", index=False)
-            df_memos.to_sql("memos", conn, if_exists="replace", index=False)
-            conn.close()
-
-            export_combined_csv()
-            return f"✅ 통합 CSV 복원 완료! (인코딩: {detected_encoding})"
-    return '''
-        <h3 style="color:lime;">📤 통합 CSV 업로드</h3>
-        <form method="POST" enctype="multipart/form-data">
-            <input type="file" name="file" accept=".csv">
-            <input type="submit" value="Upload">
-        </form>
-    '''
 
 if __name__ == "__main__":
+    init_db()
     get_adjusted_exchange_rate()  # 앱 시작 시 1회 강제 호출
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
