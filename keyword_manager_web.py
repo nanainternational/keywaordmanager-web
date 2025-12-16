@@ -12,33 +12,54 @@ CORS(app)
 
 tz = pytz.timezone("Asia/Seoul")
 
-# ✅ Render Disk(영구) 사용: 환경변수 DB_FILE 우선, 없으면 /var/data, 그마저 없으면 로컬
-DEFAULT_DB_PATH = "/var/data/keyword_manager.db"
-DB_FILE = os.environ.get("DB_FILE", DEFAULT_DB_PATH)
+# ✅ 환율 캐시
+cached_rate = {"value": None, "fetched_date": None}
 
-# ✅ 환율 캐시 저장소
-cached_rate = {
-    "value": None,
-    "fetched_date": None
-}
-
-def ensure_db_dir():
+def _is_writable_dir(path: str) -> bool:
     try:
-        db_dir = os.path.dirname(DB_FILE)
-        if db_dir and not os.path.exists(db_dir):
-            os.makedirs(db_dir, exist_ok=True)
+        if not os.path.exists(path):
+            os.makedirs(path, exist_ok=True)
+        test_file = os.path.join(path, ".writetest")
+        with open(test_file, "w", encoding="utf-8") as f:
+            f.write("ok")
+        os.remove(test_file)
+        return True
     except Exception as e:
-        print("⚠️ DB dir create failed:", e)
+        print(f"⚠️ Dir not writable: {path} ({e})")
+        return False
+
+def get_db_file():
+    # 1) env 우선
+    env_db = os.environ.get("DB_FILE")
+    if env_db:
+        db_dir = os.path.dirname(env_db) or "."
+        if _is_writable_dir(db_dir):
+            return env_db
+        print("⚠️ DB_FILE 경로에 쓸 수 없습니다. fallback 합니다.")
+
+    # 2) Render Disk 기본 경로 시도
+    render_dir = "/var/data"
+    if _is_writable_dir(render_dir):
+        return os.path.join(render_dir, "keyword_manager.db")
+
+    # 3) 최후 fallback (영구 아님)
+    local_dir = os.path.join(os.getcwd(), "data")
+    if _is_writable_dir(local_dir):
+        print("⚠️ Render Disk 미설정/권한 문제로 로컬 data/ 로 fallback (배포 시 초기화될 수 있음)")
+        return os.path.join(local_dir, "keyword_manager.db")
+
+    # 4) 진짜 최후
+    print("❌ DB 저장 경로를 만들 수 없습니다. 현재 폴더에 생성 시도합니다.")
+    return "keyword_manager.db"
+
+DB_FILE = get_db_file()
 
 def init_db():
-    ensure_db_dir()
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
 
-    # ✅ 메모
     cur.execute("CREATE TABLE IF NOT EXISTS memos (keyword TEXT UNIQUE)")
 
-    # ✅ 캘린더 이벤트
     cur.execute("""
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,6 +74,7 @@ def init_db():
 
     conn.commit()
     conn.close()
+    print(f"✅ DB OK: {DB_FILE}")
 
 @app.route("/health")
 def health():
@@ -87,10 +109,8 @@ def get_adjusted_exchange_rate():
                 adjusted = round((base_rate + 2) * 1.1, 2)
                 cached_rate["value"] = adjusted
                 cached_rate["fetched_date"] = refresh_time_key
-                print(f"✅ [{refresh_time_key}] CNY 원본: {base_rate} → 조정 환율: {adjusted}")
                 return adjusted
 
-        print("❌ 중국 환율을 찾을 수 없습니다.")
         return cached_rate["value"]
 
     except Exception as e:
@@ -189,8 +209,7 @@ def api_update_event(event_id):
         conn.close()
         return jsonify({"ok": False, "error": "not found"}), 404
 
-    fields = []
-    vals = []
+    fields, vals = [], []
 
     if title is not None:
         fields.append("title=?")
@@ -208,16 +227,13 @@ def api_update_event(event_id):
         fields.append("memo=?")
         vals.append((memo or "").strip())
 
-    if not fields:
-        conn.close()
-        return jsonify({"ok": True})
+    if fields:
+        vals.append(event_id)
+        sql = f"UPDATE events SET {', '.join(fields)} WHERE id=?"
+        cur.execute(sql, tuple(vals))
+        conn.commit()
 
-    vals.append(event_id)
-    sql = f"UPDATE events SET {', '.join(fields)} WHERE id=?"
-    cur.execute(sql, tuple(vals))
-    conn.commit()
     conn.close()
-
     return jsonify({"ok": True})
 
 @app.route("/api/events/<int:event_id>", methods=["DELETE"])
@@ -256,6 +272,5 @@ def delete_memo(keyword):
 
 if __name__ == "__main__":
     init_db()
-    get_adjusted_exchange_rate()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
