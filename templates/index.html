@@ -2,213 +2,296 @@
 <html>
 <head>
   <title>Keyword Manager Web</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css">
+
   <style>
-    body { font-family: Arial, sans-serif; background:#0b1220; color:#e2e8f0; margin:0; }
-    .wrap { max-width:1100px; margin:0 auto; padding:14px; }
-    @media (max-width: 520px) { .wrap { padding:10px; } }
+    /* ✅ 모바일 퍼스트 */
+    :root{
+      --bg:#0b1220;
+      --card:#0f172a;
+      --line:#1f2937;
+      --text:#e2e8f0;
+      --muted:#94a3b8;
+      --field:#0b1220;
+      --fieldLine:#334155;
+      --green:#22c55e;
+      --red:#ef4444;
+      --blue:#2563eb;
+      --blueLine:#1d4ed8;
+    }
 
-    .card { background:#0f172a; border:1px solid #1f2937; border-radius:14px; padding:14px; }
-    @media (max-width: 520px) { .card { padding:12px; } }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: Arial, sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
 
-    /* ✅ 환율: 아주 작게 */
-    .ratebar {
-      background:#0f172a;
-      border:1px solid #1f2937;
-      border-radius:14px;
-      padding:8px 12px;
+    .wrap{
+      width:100%;
+      max-width: 560px; /* ✅ 폰 기준 폭 */
+      margin:0 auto;
+      padding: 10px 10px 14px;
+    }
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:12px;
+    }
+
+    .gap{ height:10px; }
+
+    /* ✅ 상단 환율: 정말 얇게 */
+    .ratebar{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:8px 10px;
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap:10px;
-      font-size:13px;
+      font-size:12px;
       color:#cbd5e1;
     }
-    .ratebar b { color:#f1f5f9; }
-    .ratehint { color:#94a3b8; font-size:12px; white-space:nowrap; }
-    @media (max-width: 520px) {
-      .ratebar { padding:7px 10px; font-size:12px; }
-      .ratehint { display:none; }
+    .ratebar b{ color:#f1f5f9; }
+    .ratehint{ display:none; } /* 폰에서는 숨김 */
+
+    /* ✅ 섹션 헤더 */
+    .title{
+      margin:0;
+      font-size:15px;
+      font-weight:800;
+      letter-spacing:-0.2px;
+    }
+    .sub{
+      margin-top:4px;
+      color:var(--muted);
+      font-size:11px;
+      line-height:1.3;
     }
 
     /* ✅ 캘린더 */
-    #calendar {
-      background:#0b1220;
-      border-radius:14px;
-      padding:10px;
-      border:1px solid #1f2937;
-    }
-    @media (max-width: 520px) {
-      #calendar { padding:6px; }
+    #calendar{
+      margin-top:10px;
+      background:var(--bg);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:6px;
     }
 
-    .section-title { font-size:16px; font-weight:800; margin:0 0 8px; }
-    .muted { color:#94a3b8; font-size:12px; }
+    /* FullCalendar 모바일 조정 */
+    .fc .fc-toolbar{ flex-wrap:wrap; gap:6px; }
+    .fc .fc-toolbar-title{ font-size:14px; }
+    .fc .fc-button{ padding:6px 8px; font-size:12px; }
+    .fc .fc-daygrid-day-number{ font-size:12px; padding:6px; }
+    .fc .fc-col-header-cell-cushion{ font-size:12px; padding:6px 0; }
+    .fc .fc-daygrid-event{ font-size:12px; padding:2px 4px; }
+
+    /* ✅ 입력 공통 */
+    input, textarea{
+      width:100%;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid var(--fieldLine);
+      background:var(--field);
+      color:var(--text);
+      outline:none;
+      font-size:14px;
+    }
+    textarea{ resize:none; }
+
+    button{
+      width:100%;
+      padding:11px 12px;
+      border-radius:12px;
+      border:0;
+      font-weight:900;
+      cursor:pointer;
+      font-size:14px;
+    }
+
+    .btn-green{ background:var(--green); color:#061016; }
+    .btn-red{ background:var(--red); color:#fff; }
+    .btn-ghost{ background:#334155; color:var(--text); }
 
     /* ✅ 메모 */
-    .memo-wrap { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-    input, textarea {
-      padding:10px 12px;
+    .memo-form{ margin-top:10px; display:flex; flex-direction:column; gap:8px; }
+    .memo-list{ margin-top:8px; }
+    .memo-item{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+      padding:10px 0;
+      border-bottom:1px solid var(--line);
+    }
+    .memo-text{
+      font-size:13px;
+      line-height:1.35;
+      word-break:break-word;
+      flex:1;
+    }
+    .memo-item form{ flex:0 0 auto; }
+    .memo-item button{
+      width:auto;
+      padding:8px 10px;
+      font-size:12px;
       border-radius:10px;
-      border:1px solid #334155;
-      background:#0b1220;
-      color:#e2e8f0;
-      width:320px;
-      max-width:100%;
-      box-sizing:border-box;
-    }
-    button {
-      padding:10px 12px;
-      border-radius:10px;
-      border:0;
-      background:#22c55e;
-      color:#0b1220;
-      font-weight:800;
-      cursor:pointer;
-      white-space:nowrap;
-    }
-    .delbtn { background:#ef4444; color:white; }
-    .memo-item {
-      display:flex; justify-content:space-between; align-items:center;
-      padding:10px 0; border-bottom:1px solid #1f2937; gap:10px;
-    }
-    @media (max-width: 520px) {
-      input, textarea { width:100%; }
-      .memo-item { align-items:flex-start; }
-      button { width:auto; }
     }
 
     /* ✅ 채팅 */
-    .chat-top { display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
-    .chat-name { max-width:220px; }
-    .chat-box {
+    .chat-head{
+      margin-top:2px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .chat-box{
       margin-top:10px;
-      background:#0b1220;
-      border:1px solid #1f2937;
-      border-radius:14px;
-      padding:12px;
-      height:380px;
+      background:var(--bg);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:10px;
+      height: 46vh;       /* ✅ 화면 비율 기반 */
+      min-height: 280px;  /* 너무 작아지지 않게 */
+      max-height: 520px;  /* 너무 커지지 않게 */
       overflow-y:auto;
     }
-    @media (max-width: 520px) {
-      .chat-box { height:300px; padding:10px; }
-      .chat-name { max-width:none; }
-    }
 
-    .msg-row { display:flex; margin:8px 0; }
-    .msg-row.me { justify-content:flex-end; }
-    .bubble {
-      max-width:78%;
+    .msg-row{ display:flex; margin:8px 0; }
+    .msg-row.me{ justify-content:flex-end; }
+
+    .bubble{
+      max-width:86%;
       padding:10px 12px;
-      border-radius:14px;
+      border-radius:16px;
       background:#111827;
-      border:1px solid #1f2937;
+      border:1px solid var(--line);
       line-height:1.35;
       white-space:pre-wrap;
       word-break:break-word;
+      font-size:13px;
     }
-    .msg-row.me .bubble {
-      background:#2563eb;
-      border:1px solid #1d4ed8;
+    .msg-row.me .bubble{
+      background:var(--blue);
+      border:1px solid var(--blueLine);
       color:#fff;
     }
-    .meta {
-      font-size:11px;
-      color:#94a3b8;
-      margin-top:4px;
-    }
-    .msg-row.me .meta { color:#dbeafe; text-align:right; }
 
-    .chat-input {
+    .meta{
+      margin-top:4px;
+      font-size:10.5px;
+      color:var(--muted);
+    }
+    .msg-row.me .meta{ color:#dbeafe; text-align:right; }
+
+    .chat-input{
       margin-top:10px;
       display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      align-items:flex-end;
+      flex-direction:column;
+      gap:8px;
     }
-    .chat-input textarea {
-      flex:1;
-      min-height:44px;
-      height:44px;
-      resize:none;
+    .chat-actions{
+      display:flex;
+      gap:8px;
     }
-    .sendbtn { background:#22c55e; }
-    .ghostbtn { background:#334155; color:#e2e8f0; }
-    @media (max-width: 520px) {
-      .chat-input textarea { width:100%; height:46px; }
-      .chat-input { gap:8px; }
+    .chat-actions button{
+      width:50%;
+      padding:10px 10px;
+      font-size:13px;
+      border-radius:12px;
+    }
+    .chat-input textarea{
+      height: 46px;
+      min-height:46px;
+      max-height: 120px;
+    }
+
+    /* ✅ PC에서만 조금 넓게 (모바일 우선 유지) */
+    @media (min-width: 740px){
+      .wrap{ max-width: 760px; padding:14px; }
+      .ratehint{ display:block; color:var(--muted); font-size:12px; }
+      .chat-actions button{ width:auto; flex:1; }
     }
   </style>
 </head>
+
 <body>
   <div class="wrap">
 
-    <!-- ✅ 환율 -->
+    <!-- ✅ 환율 (맨위, 얇게) -->
     <div class="ratebar">
-      <div>🇨🇳 CNY(조정) <b>{{ exchange_rate }}</b></div>
+      <div>🇨🇳 CNY <b>{{ exchange_rate }}</b></div>
       <div class="ratehint">Citi 파싱 + 조정</div>
     </div>
 
-    <div style="height:10px;"></div>
+    <div class="gap"></div>
 
     <!-- ✅ 캘린더 -->
     <div class="card">
-      <div class="section-title">📅 캘린더</div>
-      <div class="muted">드래그로 추가 · 클릭 수정/삭제 · 이동/리사이즈 자동 저장</div>
-      <div style="height:10px;"></div>
+      <h3 class="title">📅 캘린더</h3>
+      <div class="sub">드래그 추가 · 클릭 수정/삭제 · 이동/리사이즈 자동 저장</div>
       <div id="calendar"></div>
     </div>
 
-    <div style="height:10px;"></div>
+    <div class="gap"></div>
 
     <!-- ✅ 메모 -->
     <div class="card">
-      <div class="section-title">📝 메모</div>
+      <h3 class="title">📝 메모</h3>
 
-      <form method="POST" class="memo-wrap">
-        <input name="memo_keyword" placeholder="메모 내용 입력" />
+      <form method="POST" class="memo-form">
+        <input name="memo_keyword" placeholder="메모 입력" />
         <input type="hidden" name="action" value="add_memo" />
-        <button type="submit">추가</button>
+        <button type="submit" class="btn-green">추가</button>
       </form>
 
-      <div style="height:10px;"></div>
-
-      <div>
+      <div class="memo-list">
         {% if memo_list and memo_list|length > 0 %}
           {% for memo in memo_list %}
             <div class="memo-item">
-              <div>• {{ memo }}</div>
+              <div class="memo-text">• {{ memo }}</div>
               <form method="POST" style="margin:0;">
                 <input type="hidden" name="memo_keyword" value="{{ memo }}" />
                 <input type="hidden" name="action" value="delete_memo" />
-                <button type="submit" class="delbtn">삭제</button>
+                <button type="submit" class="btn-red">삭제</button>
               </form>
             </div>
           {% endfor %}
         {% else %}
-          <div class="muted">메모가 없습니다.</div>
+          <div class="sub" style="margin-top:10px;">메모가 없습니다.</div>
         {% endif %}
       </div>
     </div>
 
-    <div style="height:10px;"></div>
+    <div class="gap"></div>
 
     <!-- ✅ 채팅 -->
     <div class="card">
-      <div class="chat-top">
-        <div>
-          <div class="section-title" style="margin:0;">💬 채팅</div>
-          <div class="muted">2초마다 자동 새로고침 (room: main)</div>
-        </div>
-        <input id="chatName" class="chat-name" placeholder="내 닉네임 (예: 허니걸)" />
+      <h3 class="title">💬 채팅</h3>
+      <div class="sub">2초마다 자동 새로고침 (room: main)</div>
+
+      <div class="chat-head">
+        <input id="chatName" placeholder="내 닉네임 (예: 허니걸)" />
       </div>
 
       <div id="chatBox" class="chat-box"></div>
 
       <div class="chat-input">
         <textarea id="chatMsg" placeholder="메시지 입력... (Enter=전송 / Shift+Enter=줄바꿈)"></textarea>
-        <button id="sendBtn" class="sendbtn">전송</button>
-        <button id="clearBtn" class="ghostbtn" type="button">내 채팅창만 비우기</button>
+
+        <div class="chat-actions">
+          <button id="sendBtn" class="btn-green" type="button">전송</button>
+          <button id="clearBtn" class="btn-ghost" type="button">내 창 비우기</button>
+        </div>
       </div>
     </div>
 
@@ -216,9 +299,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
   <script>
-    // -------------------
-    // 캘린더
-    // -------------------
     async function apiGet(url) {
       const r = await fetch(url, { credentials: "include" });
       return await r.json();
@@ -253,17 +333,17 @@
     const chatRoom = "main";
 
     function escapeHtml(s) {
-      return (s || "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+      return (s || "")
+        .replaceAll("&","&amp;")
+        .replaceAll("<","&lt;")
+        .replaceAll(">","&gt;");
     }
 
     function loadName() {
       const saved = localStorage.getItem("chat_name") || "";
       const el = document.getElementById("chatName");
       el.value = saved;
-      el.addEventListener("change", () => {
-        localStorage.setItem("chat_name", el.value.trim());
-      });
-      el.addEventListener("keyup", () => {
+      el.addEventListener("input", () => {
         localStorage.setItem("chat_name", el.value.trim());
       });
     }
@@ -294,7 +374,6 @@
 
       row.appendChild(bubble);
       box.appendChild(row);
-
       box.scrollTop = box.scrollHeight;
     }
 
@@ -311,9 +390,7 @@
             addMessageToUI(m, myName);
           });
         }
-      } catch (e) {
-        // 조용히 무시 (네트워크 순간 오류 대비)
-      }
+      } catch (e) {}
     }
 
     async function sendChat() {
@@ -322,21 +399,15 @@
 
       const sender = (nameEl.value || "").trim() || "익명";
       const message = (msgEl.value || "").trim();
-
       if (!message) return;
 
-      // UI 먼저 반응 좋게: 전송 중 잠깐 잠금
       msgEl.value = "";
       msgEl.focus();
 
       try {
         const res = await apiPost("/api/chat/send", { room: chatRoom, sender, message });
-        if (res && res.ok) {
-          // 바로 새 메시지 가져오기
-          await fetchChat();
-        }
+        if (res && res.ok) await fetchChat();
       } catch (e) {
-        // 실패하면 메시지 복구(사용자 경험)
         msgEl.value = message;
       }
     }
@@ -345,7 +416,6 @@
       document.getElementById("sendBtn").addEventListener("click", sendChat);
       document.getElementById("clearBtn").addEventListener("click", () => {
         document.getElementById("chatBox").innerHTML = "";
-        // lastId는 유지 (서버의 이전 메시지를 다시 다 불러오지 않게)
       });
 
       const msgEl = document.getElementById("chatMsg");
@@ -354,6 +424,12 @@
           e.preventDefault();
           sendChat();
         }
+      });
+
+      // 모바일에서 textarea 자동 높이
+      msgEl.addEventListener("input", () => {
+        msgEl.style.height = "46px";
+        msgEl.style.height = Math.min(msgEl.scrollHeight, 120) + "px";
       });
     }
 
