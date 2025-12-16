@@ -1,5 +1,4 @@
 from flask import Flask, render_template, request, jsonify
-import sqlite3
 from datetime import datetime
 import pytz
 import os
@@ -7,10 +6,15 @@ import requests
 from bs4 import BeautifulSoup
 from flask_cors import CORS
 
+# ✅ Postgres(Supabase) 연결용
+from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+import psycopg
+
 app = Flask(__name__)
 CORS(app)
 
 tz = pytz.timezone("Asia/Seoul")
+
 
 def _safe_mkdir(path: str) -> bool:
     try:
@@ -24,73 +28,80 @@ def _safe_mkdir(path: str) -> bool:
         print(f"⚠️ Dir not writable: {path} ({e})")
         return False
 
-# ===============================
-# ✅ DB 경로 결정 (핵심)
-# 1) DB_FILE 환경변수 있으면 그걸 사용
-# 2) 없으면 DISK_PATH/keyword_manager.db
-# 3) 실패하면 ./data/keyword_manager.db
-# ===============================
-_env_db_file = (os.environ.get("DB_FILE") or "").strip()
-_env_disk_path = (os.environ.get("DISK_PATH") or "").strip()
-
-if _env_db_file:
-    DB_FILE = _env_db_file
-else:
-    if not _env_disk_path:
-        _env_disk_path = "data"
-    DB_FILE = os.path.join(_env_disk_path, "keyword_manager.db")
-
-# DB_FILE의 디렉토리가 writable 아니면 fallback
-_db_dir = os.path.dirname(DB_FILE) or "."
-if not _safe_mkdir(_db_dir):
-    fallback_dir = "data"
-    _safe_mkdir(fallback_dir)
-    DB_FILE = os.path.join(fallback_dir, "keyword_manager.db")
-
-print("✅ DB_FILE:", DB_FILE)
 
 # ===============================
-# ✅ DB 초기화
+# ✅ DB URL (Supabase Postgres)
+# - Render에 DATABASE_URL을 권장
+# - 이미 DATABASE_URLSupabase로 넣었다면 그것도 허용
+# ===============================
+def _get_database_url():
+    url = (os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URLSupabase") or "").strip()
+    if not url:
+        raise RuntimeError("DATABASE_URL(또는 DATABASE_URLSupabase) 환경변수가 없습니다. Render Environment에 설정하세요.")
+
+    # postgres:// -> postgresql:// 정규화
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+
+    # sslmode=require 강제(없으면 추가)
+    u = urlparse(url)
+    q = dict(parse_qsl(u.query))
+    if "sslmode" not in q:
+        q["sslmode"] = "require"
+        u = u._replace(query=urlencode(q))
+        url = urlunparse(u)
+
+    return url
+
+
+def get_conn():
+    return psycopg.connect(_get_database_url())
+
+
+# ===============================
+# ✅ DB 초기화 (Supabase에 테이블/인덱스 보장)
 # ===============================
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
+    ddl = """
+    -- ✅ 메모(키워드) : 기존 Supabase에서 memos(id, content, created_at)로 만든 상태도 그대로 사용
+    create table if not exists memos (
+        id bigserial primary key,
+        content text not null,
+        created_at timestamptz default now()
+    );
+    create unique index if not exists memos_content_uq on memos(content);
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS memos (
-            keyword TEXT UNIQUE
-        )
-    """)
+    -- ✅ 캘린더 이벤트(프론트 호환 위해 events 테이블 유지)
+    create table if not exists events (
+        id bigserial primary key,
+        title text not null,
+        start text not null,
+        end text,
+        all_day integer default 0,
+        memo text,
+        created_at timestamptz default now()
+    );
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            start TEXT NOT NULL,
-            end TEXT,
-            all_day INTEGER DEFAULT 0,
-            memo TEXT,
-            created_at TEXT
-        )
-    """)
+    -- ✅ 채팅
+    create table if not exists chat_messages (
+        id bigserial primary key,
+        room text default 'main',
+        sender text,
+        message text not null,
+        created_at timestamptz default now()
+    );
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(ddl)
+        conn.commit()
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS chat_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            room TEXT DEFAULT 'main',
-            sender TEXT,
-            message TEXT NOT NULL,
-            created_at TEXT
-        )
-    """)
-
-    conn.commit()
-    conn.close()
 
 # ===============================
 # ✅ 환율 (캐시)
 # ===============================
 cached_rate = {"value": None, "fetched_date": None}
+
 
 def get_adjusted_exchange_rate():
     now = datetime.now(tz)
@@ -121,12 +132,14 @@ def get_adjusted_exchange_rate():
 
     return cached_rate["value"]
 
+
 # ===============================
 # ✅ Health (UptimeRobot)
 # ===============================
 @app.route("/health", methods=["GET", "HEAD"])
 def health():
     return ("", 200)
+
 
 # ===============================
 # ✅ 메인
@@ -140,30 +153,31 @@ def index():
         memo_keyword = request.form.get("memo_keyword", "").strip()
 
         if action == "add_memo" and memo_keyword:
-            conn = sqlite3.connect(DB_FILE)
-            cur = conn.cursor()
-            cur.execute("INSERT OR IGNORE INTO memos (keyword) VALUES (?)", (memo_keyword,))
-            conn.commit()
-            conn.close()
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "insert into memos (content) values (%s) on conflict (content) do nothing",
+                        (memo_keyword,),
+                    )
+                conn.commit()
 
         if action == "delete_memo" and memo_keyword:
-            conn = sqlite3.connect(DB_FILE)
-            cur = conn.cursor()
-            cur.execute("DELETE FROM memos WHERE keyword=?", (memo_keyword,))
-            conn.commit()
-            conn.close()
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("delete from memos where content=%s", (memo_keyword,))
+                conn.commit()
 
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("SELECT keyword FROM memos ORDER BY keyword")
-    memo_list = [r[0] for r in cur.fetchall()]
-    conn.close()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("select content from memos order by content")
+            memo_list = [r[0] for r in cur.fetchall()]
 
     return render_template(
         "index.html",
         memo_list=memo_list,
-        exchange_rate=get_adjusted_exchange_rate()
+        exchange_rate=get_adjusted_exchange_rate(),
     )
+
 
 # ===============================
 # ✅ 캘린더 API
@@ -171,46 +185,53 @@ def index():
 @app.route("/api/events", methods=["GET"])
 def get_events():
     init_db()
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("SELECT id, title, start, end, all_day, memo FROM events")
-    rows = cur.fetchall()
-    conn.close()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("select id, title, start, end, all_day, memo from events")
+            rows = cur.fetchall()
 
-    return jsonify([
-        {
-            "id": r[0],
-            "title": r[1],
-            "start": r[2],
-            "end": r[3],
-            "allDay": bool(r[4]),
-            "extendedProps": {"memo": r[5] or ""}
-        } for r in rows
-    ])
+    return jsonify(
+        [
+            {
+                "id": r[0],
+                "title": r[1],
+                "start": r[2],
+                "end": r[3],
+                "allDay": bool(r[4]),
+                "extendedProps": {"memo": r[5] or ""},
+            }
+            for r in rows
+        ]
+    )
+
 
 @app.route("/api/events", methods=["POST"])
 def add_event():
     init_db()
     data = request.get_json() or {}
 
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO events (title, start, end, all_day, memo, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (
-        data.get("title", ""),
-        data.get("start", ""),
-        data.get("end"),
-        1 if data.get("allDay") else 0,
-        data.get("memo", ""),
-        datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
-    ))
-    conn.commit()
-    event_id = cur.lastrowid
-    conn.close()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into events (title, start, end, all_day, memo, created_at)
+                values (%s, %s, %s, %s, %s, %s)
+                returning id
+                """,
+                (
+                    data.get("title", ""),
+                    data.get("start", ""),
+                    data.get("end"),
+                    1 if data.get("allDay") else 0,
+                    data.get("memo", ""),
+                    datetime.now(tz),
+                ),
+            )
+            event_id = cur.fetchone()[0]
+        conn.commit()
 
     return jsonify({"ok": True, "id": event_id})
+
 
 @app.route("/api/events/<int:event_id>", methods=["PUT"])
 def update_event(event_id):
@@ -220,13 +241,13 @@ def update_event(event_id):
     fields = []
     values = []
 
-    for key, col in [("title","title"), ("start","start"), ("end","end"), ("memo","memo")]:
+    for key, col in [("title", "title"), ("start", "start"), ("end", "end"), ("memo", "memo")]:
         if key in data:
-            fields.append(f"{col}=?")
+            fields.append(f"{col}=%s")
             values.append(data[key])
 
     if "allDay" in data:
-        fields.append("all_day=?")
+        fields.append("all_day=%s")
         values.append(1 if data["allDay"] else 0)
 
     if not fields:
@@ -234,22 +255,23 @@ def update_event(event_id):
 
     values.append(event_id)
 
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute(f"UPDATE events SET {', '.join(fields)} WHERE id=?", values)
-    conn.commit()
-    conn.close()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"update events set {', '.join(fields)} where id=%s", values)
+        conn.commit()
+
     return jsonify({"ok": True})
+
 
 @app.route("/api/events/<int:event_id>", methods=["DELETE"])
 def delete_event(event_id):
     init_db()
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("DELETE FROM events WHERE id=?", (event_id,))
-    conn.commit()
-    conn.close()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("delete from events where id=%s", (event_id,))
+        conn.commit()
     return jsonify({"ok": True})
+
 
 # ===============================
 # ✅ 채팅 API
@@ -259,24 +281,29 @@ def chat_messages():
     init_db()
     after_id = int(request.args.get("after_id", 0))
 
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT id, sender, message, created_at
-        FROM chat_messages
-        WHERE id > ?
-        ORDER BY id ASC
-    """, (after_id,))
-    rows = cur.fetchall()
-    conn.close()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select id, sender, message, created_at
+                from chat_messages
+                where id > %s
+                order by id asc
+                """,
+                (after_id,),
+            )
+            rows = cur.fetchall()
 
-    return jsonify({
-        "ok": True,
-        "messages": [
-            {"id": r[0], "sender": r[1], "message": r[2], "created_at": r[3]}
-            for r in rows
-        ]
-    })
+    return jsonify(
+        {
+            "ok": True,
+            "messages": [
+                {"id": r[0], "sender": r[1], "message": r[2], "created_at": r[3].isoformat() if r[3] else None}
+                for r in rows
+            ],
+        }
+    )
+
 
 @app.route("/api/chat/send", methods=["POST"])
 def send_chat():
@@ -288,22 +315,21 @@ def send_chat():
     if not message:
         return jsonify({"ok": False, "error": "empty_message"}), 400
 
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO chat_messages (room, sender, message, created_at)
-        VALUES (?, ?, ?, ?)
-    """, (
-        "main",
-        sender,
-        message,
-        datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
-    ))
-    conn.commit()
-    msg_id = cur.lastrowid
-    conn.close()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into chat_messages (room, sender, message, created_at)
+                values (%s, %s, %s, %s)
+                returning id
+                """,
+                ("main", sender, message, datetime.now(tz)),
+            )
+            msg_id = cur.fetchone()[0]
+        conn.commit()
 
     return jsonify({"ok": True, "id": msg_id})
+
 
 if __name__ == "__main__":
     init_db()
