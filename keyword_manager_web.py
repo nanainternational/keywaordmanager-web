@@ -32,16 +32,30 @@ def _safe_mkdir(path: str) -> bool:
 # ===============================
 # ✅ DB URL (Supabase Postgres)
 # - Render에 DATABASE_URL을 권장
-# - 이미 DATABASE_URLSupabase로 넣었다면 그것도 허용
 # ===============================
+def _has_bad_percent(s: str) -> bool:
+    # conn URI에서 %는 반드시 %25 같은 "퍼센트 인코딩" 형태여야 함
+    # % 다음에 2자리 hex가 아니면 "깨진 URI"로 봄
+    import re
+    return re.search(r"%(?![0-9A-Fa-f]{2})", s) is not None
+
+
 def _get_database_url():
-    url = (os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URLSupabase") or "").strip()
-    if not url:
+    raw = (os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URLSupabase") or "").strip()
+    if not raw:
         raise RuntimeError("DATABASE_URL(또는 DATABASE_URLSupabase) 환경변수가 없습니다. Render Environment에 설정하세요.")
 
     # postgres:// -> postgresql:// 정규화
+    url = raw
     if url.startswith("postgres://"):
         url = "postgresql://" + url[len("postgres://"):]
+
+    # ✅ 흔한 실수: password에 %가 있는데 %25로 인코딩 안 함
+    if _has_bad_percent(url):
+        raise RuntimeError(
+            "DATABASE_URL에 인코딩되지 않은 % 가 포함되어 있습니다.\n"
+            "예) 비밀번호가 Cjdekarh35% 라면 URL에서는 Cjdekarh35%25 로 써야 합니다."
+        )
 
     # sslmode=require 강제(없으면 추가)
     u = urlparse(url)
@@ -51,11 +65,22 @@ def _get_database_url():
         u = u._replace(query=urlencode(q))
         url = urlunparse(u)
 
+    # ✅ 어떤 URL로 붙는지 확인용(비번은 절대 출력하지 않게 마스킹)
+    try:
+        u2 = urlparse(url)
+        masked = url
+        if u2.password:
+            masked = url.replace(u2.password, "***")
+        print(f"✅ Using DATABASE_URL: {masked}")
+    except Exception:
+        pass
+
     return url
 
 
 def get_conn():
-    return psycopg.connect(_get_database_url())
+    # connect_timeout은 Render에서 문제 추적할 때 좋아서 넣음
+    return psycopg.connect(_get_database_url(), connect_timeout=10)
 
 
 # ===============================
@@ -63,7 +88,6 @@ def get_conn():
 # ===============================
 def init_db():
     ddl = """
-    -- ✅ 메모(키워드) : 기존 Supabase에서 memos(id, content, created_at)로 만든 상태도 그대로 사용
     create table if not exists memos (
         id bigserial primary key,
         content text not null,
@@ -71,7 +95,6 @@ def init_db():
     );
     create unique index if not exists memos_content_uq on memos(content);
 
-    -- ✅ 캘린더 이벤트(프론트 호환 위해 events 테이블 유지)
     create table if not exists events (
         id bigserial primary key,
         title text not null,
@@ -82,7 +105,6 @@ def init_db():
         created_at timestamptz default now()
     );
 
-    -- ✅ 채팅
     create table if not exists chat_messages (
         id bigserial primary key,
         room text default 'main',
