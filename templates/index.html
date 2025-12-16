@@ -47,7 +47,7 @@
 
     /* ✅ 메모 */
     .memo-wrap { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-    input {
+    input, textarea {
       padding:10px 12px;
       border-radius:10px;
       border:1px solid #334155;
@@ -73,17 +73,77 @@
       padding:10px 0; border-bottom:1px solid #1f2937; gap:10px;
     }
     @media (max-width: 520px) {
-      input { width:100%; }
+      input, textarea { width:100%; }
       .memo-item { align-items:flex-start; }
-      .memo-item form { flex:0 0 auto; }
       button { width:auto; }
+    }
+
+    /* ✅ 채팅 */
+    .chat-top { display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
+    .chat-name { max-width:220px; }
+    .chat-box {
+      margin-top:10px;
+      background:#0b1220;
+      border:1px solid #1f2937;
+      border-radius:14px;
+      padding:12px;
+      height:380px;
+      overflow-y:auto;
+    }
+    @media (max-width: 520px) {
+      .chat-box { height:300px; padding:10px; }
+      .chat-name { max-width:none; }
+    }
+
+    .msg-row { display:flex; margin:8px 0; }
+    .msg-row.me { justify-content:flex-end; }
+    .bubble {
+      max-width:78%;
+      padding:10px 12px;
+      border-radius:14px;
+      background:#111827;
+      border:1px solid #1f2937;
+      line-height:1.35;
+      white-space:pre-wrap;
+      word-break:break-word;
+    }
+    .msg-row.me .bubble {
+      background:#2563eb;
+      border:1px solid #1d4ed8;
+      color:#fff;
+    }
+    .meta {
+      font-size:11px;
+      color:#94a3b8;
+      margin-top:4px;
+    }
+    .msg-row.me .meta { color:#dbeafe; text-align:right; }
+
+    .chat-input {
+      margin-top:10px;
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:flex-end;
+    }
+    .chat-input textarea {
+      flex:1;
+      min-height:44px;
+      height:44px;
+      resize:none;
+    }
+    .sendbtn { background:#22c55e; }
+    .ghostbtn { background:#334155; color:#e2e8f0; }
+    @media (max-width: 520px) {
+      .chat-input textarea { width:100%; height:46px; }
+      .chat-input { gap:8px; }
     }
   </style>
 </head>
 <body>
   <div class="wrap">
 
-    <!-- ✅ 환율 섹션 (최소화, 맨위) -->
+    <!-- ✅ 환율 -->
     <div class="ratebar">
       <div>🇨🇳 CNY(조정) <b>{{ exchange_rate }}</b></div>
       <div class="ratehint">Citi 파싱 + 조정</div>
@@ -91,7 +151,7 @@
 
     <div style="height:10px;"></div>
 
-    <!-- ✅ 캘린더 섹션 -->
+    <!-- ✅ 캘린더 -->
     <div class="card">
       <div class="section-title">📅 캘린더</div>
       <div class="muted">드래그로 추가 · 클릭 수정/삭제 · 이동/리사이즈 자동 저장</div>
@@ -101,7 +161,7 @@
 
     <div style="height:10px;"></div>
 
-    <!-- ✅ 메모 섹션 -->
+    <!-- ✅ 메모 -->
     <div class="card">
       <div class="section-title">📝 메모</div>
 
@@ -131,10 +191,34 @@
       </div>
     </div>
 
+    <div style="height:10px;"></div>
+
+    <!-- ✅ 채팅 -->
+    <div class="card">
+      <div class="chat-top">
+        <div>
+          <div class="section-title" style="margin:0;">💬 채팅</div>
+          <div class="muted">2초마다 자동 새로고침 (room: main)</div>
+        </div>
+        <input id="chatName" class="chat-name" placeholder="내 닉네임 (예: 허니걸)" />
+      </div>
+
+      <div id="chatBox" class="chat-box"></div>
+
+      <div class="chat-input">
+        <textarea id="chatMsg" placeholder="메시지 입력... (Enter=전송 / Shift+Enter=줄바꿈)"></textarea>
+        <button id="sendBtn" class="sendbtn">전송</button>
+        <button id="clearBtn" class="ghostbtn" type="button">내 채팅창만 비우기</button>
+      </div>
+    </div>
+
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
   <script>
+    // -------------------
+    // 캘린더
+    // -------------------
     async function apiGet(url) {
       const r = await fetch(url, { credentials: "include" });
       return await r.json();
@@ -162,9 +246,120 @@
       return await r.json();
     }
 
-    document.addEventListener("DOMContentLoaded", async function() {
-      const events = await apiGet("/api/events");
+    // -------------------
+    // 채팅
+    // -------------------
+    let chatLastId = 0;
+    const chatRoom = "main";
 
+    function escapeHtml(s) {
+      return (s || "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+    }
+
+    function loadName() {
+      const saved = localStorage.getItem("chat_name") || "";
+      const el = document.getElementById("chatName");
+      el.value = saved;
+      el.addEventListener("change", () => {
+        localStorage.setItem("chat_name", el.value.trim());
+      });
+      el.addEventListener("keyup", () => {
+        localStorage.setItem("chat_name", el.value.trim());
+      });
+    }
+
+    function addMessageToUI(msg, myName) {
+      const box = document.getElementById("chatBox");
+      const isMe = (myName && msg.sender === myName);
+
+      const row = document.createElement("div");
+      row.className = "msg-row" + (isMe ? " me" : "");
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+
+      const top = document.createElement("div");
+      top.innerHTML = isMe ? "" : `<b>${escapeHtml(msg.sender)}</b><br/>`;
+
+      const body = document.createElement("div");
+      body.innerHTML = escapeHtml(msg.message);
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = msg.created_at || "";
+
+      bubble.appendChild(top);
+      bubble.appendChild(body);
+      bubble.appendChild(meta);
+
+      row.appendChild(bubble);
+      box.appendChild(row);
+
+      box.scrollTop = box.scrollHeight;
+    }
+
+    async function fetchChat() {
+      try {
+        const myName = (document.getElementById("chatName").value || "").trim();
+        const res = await apiGet(`/api/chat/messages?room=${encodeURIComponent(chatRoom)}&after_id=${chatLastId}`);
+        if (!res || !res.ok) return;
+
+        const msgs = res.messages || [];
+        if (msgs.length > 0) {
+          msgs.forEach(m => {
+            chatLastId = Math.max(chatLastId, m.id || 0);
+            addMessageToUI(m, myName);
+          });
+        }
+      } catch (e) {
+        // 조용히 무시 (네트워크 순간 오류 대비)
+      }
+    }
+
+    async function sendChat() {
+      const nameEl = document.getElementById("chatName");
+      const msgEl = document.getElementById("chatMsg");
+
+      const sender = (nameEl.value || "").trim() || "익명";
+      const message = (msgEl.value || "").trim();
+
+      if (!message) return;
+
+      // UI 먼저 반응 좋게: 전송 중 잠깐 잠금
+      msgEl.value = "";
+      msgEl.focus();
+
+      try {
+        const res = await apiPost("/api/chat/send", { room: chatRoom, sender, message });
+        if (res && res.ok) {
+          // 바로 새 메시지 가져오기
+          await fetchChat();
+        }
+      } catch (e) {
+        // 실패하면 메시지 복구(사용자 경험)
+        msgEl.value = message;
+      }
+    }
+
+    function bindChat() {
+      document.getElementById("sendBtn").addEventListener("click", sendChat);
+      document.getElementById("clearBtn").addEventListener("click", () => {
+        document.getElementById("chatBox").innerHTML = "";
+        // lastId는 유지 (서버의 이전 메시지를 다시 다 불러오지 않게)
+      });
+
+      const msgEl = document.getElementById("chatMsg");
+      msgEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendChat();
+        }
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", async function() {
+      // 캘린더
+      const events = await apiGet("/api/events");
       const calendarEl = document.getElementById("calendar");
       const calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: "dayGridMonth",
@@ -260,8 +455,13 @@
           }
         }
       });
-
       calendar.render();
+
+      // 채팅
+      loadName();
+      bindChat();
+      await fetchChat();
+      setInterval(fetchChat, 2000);
     });
   </script>
 </body>
