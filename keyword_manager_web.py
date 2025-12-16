@@ -21,8 +21,12 @@ cached_rate = {
     "fetched_date": None  # YYYY-MM-DD-HH-MM
 }
 
-# ✅ 시티은행 기준 - 두 번째 <li> = 중국(CNY) 환율
+# ✅ 헬스 체크 (Keep Alive 용)
+@app.route("/health")
+def health():
+    return "ok", 200
 
+# ✅ 시티은행 기준 - 두 번째 <li> = 중국(CNY) 환율
 def get_adjusted_exchange_rate():
     now = datetime.now(tz)
     now_key = now.strftime("%Y-%m-%d-%H-%M")
@@ -277,4 +281,5 @@ def upload_all():
 
 if __name__ == "__main__":
     get_adjusted_exchange_rate()  # 앱 시작 시 1회 강제 호출
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
