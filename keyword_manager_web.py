@@ -6,7 +6,6 @@ import requests
 from bs4 import BeautifulSoup
 from flask_cors import CORS
 
-# ✅ Postgres(Supabase) 연결용
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 import psycopg
 import threading
@@ -20,19 +19,6 @@ _DB_READY = False
 _DB_LOCK = threading.Lock()
 
 
-def _safe_mkdir(path: str) -> bool:
-    try:
-        os.makedirs(path, exist_ok=True)
-        testfile = os.path.join(path, ".write_test")
-        with open(testfile, "w", encoding="utf-8") as f:
-            f.write("ok")
-        os.remove(testfile)
-        return True
-    except Exception as e:
-        print(f"⚠️ Dir not writable: {path} ({e})")
-        return False
-
-
 # ===============================
 # ✅ DB URL (Supabase Postgres)
 # ===============================
@@ -41,11 +27,9 @@ def _get_database_url():
     if not url:
         raise RuntimeError("DATABASE_URL(또는 DATABASE_URLSupabase) 환경변수가 없습니다. Render Environment에 설정하세요.")
 
-    # postgres:// -> postgresql:// 정규화
     if url.startswith("postgres://"):
-        url = "postgresql://" + url[len("postgres://") :]
+        url = "postgresql://" + url[len("postgres://"):]
 
-    # sslmode=require 강제(없으면 추가)
     u = urlparse(url)
     q = dict(parse_qsl(u.query))
     if "sslmode" not in q:
@@ -53,7 +37,7 @@ def _get_database_url():
         u = u._replace(query=urlencode(q))
         url = urlunparse(u)
 
-    # ✅ 로그(비번 마스킹)
+    # 로그(비번 마스킹)
     try:
         masked = url
         if "://" in masked and "@" in masked:
@@ -74,7 +58,7 @@ def get_conn():
 
 
 # ===============================
-# ✅ DB 초기화 (한 번만)
+# ✅ DB 초기화
 # ===============================
 def init_db():
     ddl = """
@@ -85,6 +69,7 @@ def init_db():
     );
     create unique index if not exists memos_content_uq on memos(content);
 
+    -- ✅ events 테이블 (최종 스키마)
     create table if not exists events (
         id bigserial primary key,
         title text not null,
@@ -110,6 +95,53 @@ def init_db():
         conn.commit()
 
 
+# ===============================
+# ✅ [섹션 A] events 테이블 마이그레이션
+# - 기존에 start / end 컬럼으로 만들어진 테이블이면
+#   start_at / end_at로 rename + 누락 컬럼 add
+# ===============================
+def migrate_events_table():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                select column_name
+                from information_schema.columns
+                where table_schema='public' and table_name='events'
+            """)
+            cols = {r[0] for r in cur.fetchall()}
+
+            # ✅ rename 필요 케이스들 처리 (조건부로만 실행)
+            # (Postgres는 RENAME COLUMN에 IF EXISTS가 없어서, 존재할 때만 실행)
+            if "start_at" not in cols and "start" in cols:
+                cur.execute('alter table events rename column "start" to start_at')
+                cols.discard("start")
+                cols.add("start_at")
+
+            if "end_at" not in cols and "end" in cols:
+                cur.execute('alter table events rename column "end" to end_at')
+                cols.discard("end")
+                cols.add("end_at")
+
+            # ✅ 누락 컬럼 추가 (IF NOT EXISTS 지원)
+            # start_at이 없으면 추가 (NOT NULL 강제는 기존데이터 때문에 위험해서 일단 nullable로 추가 후, 운영 안정되면 정리)
+            if "start_at" not in cols:
+                cur.execute("alter table events add column if not exists start_at text")
+
+            if "end_at" not in cols:
+                cur.execute("alter table events add column if not exists end_at text")
+
+            if "all_day" not in cols:
+                cur.execute("alter table events add column if not exists all_day integer default 0")
+
+            if "memo" not in cols:
+                cur.execute("alter table events add column if not exists memo text")
+
+            if "created_at" not in cols:
+                cur.execute("alter table events add column if not exists created_at timestamptz default now()")
+
+        conn.commit()
+
+
 def ensure_db():
     global _DB_READY
     if _DB_READY:
@@ -118,6 +150,8 @@ def ensure_db():
         if _DB_READY:
             return
         init_db()
+        # ✅ 기존 테이블이 옛날 스키마일 수 있어서 보정
+        migrate_events_table()
         _DB_READY = True
 
 
@@ -157,17 +191,11 @@ def get_adjusted_exchange_rate():
     return cached_rate["value"]
 
 
-# ===============================
-# ✅ Health (UptimeRobot)
-# ===============================
 @app.route("/health", methods=["GET", "HEAD"])
 def health():
     return ("", 200)
 
 
-# ===============================
-# ✅ 메인
-# ===============================
 @app.route("/", methods=["GET", "POST", "HEAD"])
 def index():
     if request.method == "HEAD":
@@ -232,10 +260,6 @@ def get_events():
     )
 
 
-# ===============================
-# ✅ [섹션 A] 일정 추가 (POST) - JSON 보장
-# - 어떤 에러가 나도 HTML 대신 JSON(ok:false)로 반환
-# ===============================
 @app.route("/api/events", methods=["POST"])
 def add_event():
     ensure_db()
@@ -259,14 +283,7 @@ def add_event():
                     values (%s, %s, %s, %s, %s, %s)
                     returning id
                     """,
-                    (
-                        title,
-                        start,
-                        end,
-                        all_day,
-                        memo,
-                        datetime.now(tz),
-                    ),
+                    (title, start, end, all_day, memo, datetime.now(tz)),
                 )
                 event_id = cur.fetchone()[0]
             conn.commit()
