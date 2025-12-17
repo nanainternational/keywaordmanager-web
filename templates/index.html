@@ -83,6 +83,16 @@
     }
     .hint { color: var(--muted); font-size: 11px; font-weight: 300; }
 
+    button.mini {
+      width: auto;
+      padding: 7px 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+
     /* ✅ 채팅 */
     .chat-box {
       height: 220px;
@@ -247,6 +257,7 @@
       .chat-box { height: 200px; }
       #calendar { min-height: 620px; }
       .fc .fc-toolbar { flex-wrap: wrap; gap: 6px; }
+      .modal .grid { grid-template-columns: 1fr; }
     }
 
     /* ✅ 모달 */
@@ -298,7 +309,6 @@
     <div class="section">
       <div class="section-title">
         <h3>채팅</h3>
-        <div class="hint">모바일 폭에 맞춤</div>
       </div>
 
       <div class="chat-box">
@@ -315,7 +325,7 @@
     <div class="section">
       <div class="section-title">
         <h3>메모</h3>
-        <div class="hint">업데이트해도 데이터 유지</div>
+        <button class="mini" id="refreshMemosBtn" type="button">새로고침</button>
       </div>
 
       <form method="POST" class="memo-row">
@@ -339,7 +349,7 @@
     <div class="calendar-wrap">
       <div class="section-title" style="margin: 6px 2px 10px;">
         <h3>캘린더</h3>
-        <div class="hint">탭 또는 꾹누름 → 일정 추가</div>
+        <button class="mini" id="refreshCalendarBtn" type="button">새로고침</button>
       </div>
       <div id="calendar"></div>
     </div>
@@ -453,10 +463,24 @@
       }
     }
 
+    let chatPollTimer = null;
+
     async function pollChat() {
+      if (chatPollTimer) clearTimeout(chatPollTimer);
+
+      if (document.hidden) {
+        chatPollTimer = setTimeout(pollChat, 5000);
+        return;
+      }
+
       try { await pollChatOnce(); } catch (e) {}
-      setTimeout(pollChat, 700);
+
+      chatPollTimer = setTimeout(pollChat, 2000);
     }
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) pollChat();
+    });
 
     async function sendChat() {
       const sender = (chatSender.value || "익명").trim();
@@ -586,6 +610,7 @@
       calendar = new FullCalendar.Calendar(calEl, {
         initialView: "dayGridMonth",
           timeZone: "Asia/Seoul",
+      displayEventTime: false,
         height: "auto",
         expandRows: true,
         nowIndicator: true,
@@ -647,6 +672,18 @@
 
     pollChat();
     initCalendar();
+
+  const refreshMemosBtn = document.getElementById("refreshMemosBtn");
+  if (refreshMemosBtn) {
+    refreshMemosBtn.addEventListener("click", () => window.location.reload());
+  }
+
+  const refreshCalendarBtn = document.getElementById("refreshCalendarBtn");
+  if (refreshCalendarBtn) {
+    refreshCalendarBtn.addEventListener("click", () => {
+      if (calendar) calendar.refetchEvents();
+    });
+  }
   </script>
 </body>
 </html>
