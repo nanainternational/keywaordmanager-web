@@ -6,6 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 from flask_cors import CORS
 
+# ✅ Postgres(Supabase) 연결용
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 import psycopg
 import threading
@@ -28,8 +29,9 @@ def _get_database_url():
         raise RuntimeError("DATABASE_URL(또는 DATABASE_URLSupabase) 환경변수가 없습니다. Render Environment에 설정하세요.")
 
     if url.startswith("postgres://"):
-        url = "postgresql://" + url[len("postgres://"):]
+        url = "postgresql://" + url[len("postgres://") :]
 
+    # sslmode=require 강제(없으면 추가)
     u = urlparse(url)
     q = dict(parse_qsl(u.query))
     if "sslmode" not in q:
@@ -37,7 +39,7 @@ def _get_database_url():
         u = u._replace(query=urlencode(q))
         url = urlunparse(u)
 
-    # 로그(비번 마스킹)
+    # ✅ 로그(비번 마스킹)
     try:
         masked = url
         if "://" in masked and "@" in masked:
@@ -69,7 +71,6 @@ def init_db():
     );
     create unique index if not exists memos_content_uq on memos(content);
 
-    -- ✅ events 테이블 (최종 스키마)
     create table if not exists events (
         id bigserial primary key,
         title text not null,
@@ -97,45 +98,42 @@ def init_db():
 
 # ===============================
 # ✅ [섹션 A] events 테이블 마이그레이션
-# - 기존에 start / end 컬럼으로 만들어진 테이블이면
-#   start_at / end_at로 rename + 누락 컬럼 add
+# - 이미 생성된 events 테이블이 예전 스키마(start/end 등)일 수 있어
+#   start_at/end_at로 rename 또는 컬럼 추가로 보정
 # ===============================
 def migrate_events_table():
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 select column_name
                 from information_schema.columns
                 where table_schema='public' and table_name='events'
-            """)
+                """
+            )
             cols = {r[0] for r in cur.fetchall()}
 
-            # ✅ rename 필요 케이스들 처리 (조건부로만 실행)
-            # (Postgres는 RENAME COLUMN에 IF EXISTS가 없어서, 존재할 때만 실행)
+            # ✅ start -> start_at
             if "start_at" not in cols and "start" in cols:
                 cur.execute('alter table events rename column "start" to start_at')
                 cols.discard("start")
                 cols.add("start_at")
 
+            # ✅ end -> end_at (과거 버전 대응)
             if "end_at" not in cols and "end" in cols:
                 cur.execute('alter table events rename column "end" to end_at')
                 cols.discard("end")
                 cols.add("end_at")
 
-            # ✅ 누락 컬럼 추가 (IF NOT EXISTS 지원)
-            # start_at이 없으면 추가 (NOT NULL 강제는 기존데이터 때문에 위험해서 일단 nullable로 추가 후, 운영 안정되면 정리)
+            # ✅ 누락 컬럼 추가
             if "start_at" not in cols:
                 cur.execute("alter table events add column if not exists start_at text")
-
             if "end_at" not in cols:
                 cur.execute("alter table events add column if not exists end_at text")
-
             if "all_day" not in cols:
                 cur.execute("alter table events add column if not exists all_day integer default 0")
-
             if "memo" not in cols:
                 cur.execute("alter table events add column if not exists memo text")
-
             if "created_at" not in cols:
                 cur.execute("alter table events add column if not exists created_at timestamptz default now()")
 
@@ -150,7 +148,6 @@ def ensure_db():
         if _DB_READY:
             return
         init_db()
-        # ✅ 기존 테이블이 옛날 스키마일 수 있어서 보정
         migrate_events_table()
         _DB_READY = True
 
@@ -191,11 +188,17 @@ def get_adjusted_exchange_rate():
     return cached_rate["value"]
 
 
+# ===============================
+# ✅ Health (UptimeRobot)
+# ===============================
 @app.route("/health", methods=["GET", "HEAD"])
 def health():
     return ("", 200)
 
 
+# ===============================
+# ✅ 메인
+# ===============================
 @app.route("/", methods=["GET", "POST", "HEAD"])
 def index():
     if request.method == "HEAD":
@@ -203,6 +206,7 @@ def index():
 
     ensure_db()
 
+    # (기존 폼 방식도 유지: 혹시 JS 꺼졌을 때 대비)
     if request.method == "POST":
         action = request.form.get("action")
         memo_keyword = request.form.get("memo_keyword", "").strip()
@@ -232,6 +236,60 @@ def index():
         memo_list=memo_list,
         exchange_rate=get_adjusted_exchange_rate(),
     )
+
+
+# ===============================
+# ✅ [섹션 B] 메모 API (AJAX + 실시간 동기화용)
+# ===============================
+@app.route("/api/memos", methods=["GET"])
+def api_get_memos():
+    ensure_db()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("select content from memos order by content")
+            memo_list = [r[0] for r in cur.fetchall()]
+    return jsonify({"ok": True, "memos": memo_list})
+
+
+@app.route("/api/memos", methods=["POST"])
+def api_add_memo():
+    ensure_db()
+    try:
+        data = request.get_json() or {}
+        content = (data.get("content") or "").strip()
+        if not content:
+            return jsonify({"ok": False, "error": "empty_content"}), 400
+
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "insert into memos (content) values (%s) on conflict (content) do nothing",
+                    (content,),
+                )
+            conn.commit()
+
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/memos", methods=["DELETE"])
+def api_delete_memo():
+    ensure_db()
+    try:
+        data = request.get_json() or {}
+        content = (data.get("content") or "").strip()
+        if not content:
+            return jsonify({"ok": False, "error": "empty_content"}), 400
+
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("delete from memos where content=%s", (content,))
+            conn.commit()
+
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 # ===============================
