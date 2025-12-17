@@ -2,9 +2,12 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
+  <!-- ✅ 모바일 입력창 눌렀을 때 확대(줌) 방지 -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+
   <title>Keyword Manager Web</title>
 
+  <!-- FullCalendar -->
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
@@ -19,6 +22,7 @@
       --accent: #4da3ff;
       --danger: #ff5a6a;
     }
+
     * { box-sizing: border-box; }
     html, body { height: 100%; }
     body {
@@ -28,16 +32,31 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
       text-rendering: optimizeLegibility;
+
+      /* ✅ 폰트 1 작게 + 얇게 */
       font-size: 14px;
       font-weight: 300;
       overscroll-behavior: none;
     }
-    .wrap { max-width: 920px; margin: 0 auto; padding: 10px 10px 16px; }
+
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 10px 10px 16px;
+    }
+
+    /* ✅ 환율 섹션: 최소화(작게) */
     .rate-bar {
-      display: flex; align-items: center; justify-content: space-between; gap: 10px;
-      padding: 7px 10px; background: rgba(255,255,255,.04);
-      border: 1px solid var(--line); border-radius: 12px;
-      margin-bottom: 10px; font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 7px 10px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      margin-bottom: 10px;
+      font-size: 12px;
     }
     .rate-bar .label { color: var(--muted); font-weight: 300; }
     .rate-bar .val { font-weight: 600; letter-spacing: .2px; }
@@ -50,26 +69,59 @@
       margin-bottom: 10px;
     }
     .section-title {
-      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
       margin: 2px 2px 10px;
     }
-    .section-title h3 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: .15px; }
+    .section-title h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: .15px;
+    }
     .hint { color: var(--muted); font-size: 11px; font-weight: 300; }
 
-    .chat-box { height: 220px; display: flex; flex-direction: column; gap: 8px; }
+    /* ✅ 채팅 */
+    .chat-box {
+      height: 220px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
     .chat-messages {
-      flex: 1; overflow: auto; padding: 8px;
-      border-radius: 12px; background: rgba(255,255,255,.04);
+      flex: 1;
+      overflow: auto;
+      padding: 8px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.04);
       border: 1px solid var(--line);
     }
-    .msg { display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-start; }
+    .msg {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: flex-start;
+    }
     .bubble {
-      max-width: 80%; padding: 9px 11px; border-radius: 14px;
-      background: rgba(255,255,255,.07); border: 1px solid var(--line);
-      line-height: 1.25; font-size: 13px; font-weight: 300; word-break: break-word;
+      max-width: 80%;
+      padding: 9px 11px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.07);
+      border: 1px solid var(--line);
+      line-height: 1.25;
+      font-size: 13px;
+      font-weight: 300;
+      word-break: break-word;
     }
     .bubble b { font-weight: 600; }
-    .meta { color: var(--muted); font-size: 10px; margin-top: 3px; font-weight: 300; }
+    .meta {
+      color: var(--muted);
+      font-size: 10px;
+      margin-top: 3px;
+      font-weight: 300;
+    }
 
     .chat-input-row {
       width: 100%;
@@ -80,9 +132,15 @@
     }
     .chat-input-row > * { min-width: 0; }
 
-    input, textarea, button { font: inherit; color: var(--text); outline: none; }
+    input, textarea, button {
+      font: inherit;
+      color: var(--text);
+      outline: none;
+    }
+
     input[type="text"], textarea {
-      font-size: 16px; font-weight: 300;
+      font-size: 16px;
+      font-weight: 300;
       background: rgba(255,255,255,.04);
       border: 1px solid var(--line);
       border-radius: 12px;
@@ -98,25 +156,64 @@
       cursor: pointer;
       font-weight: 600;
       font-size: 13px;
-      touch-action: manipulation;
+      touch-action: manipulation; /* ✅ 모바일 탭 반응 개선 */
     }
-    button.primary { background: rgba(77,163,255,.18); border-color: rgba(77,163,255,.28); }
-    button.danger { background: rgba(255,90,106,.16); border-color: rgba(255,90,106,.26); }
-    button:disabled { opacity: .55; cursor: not-allowed; }
+    button.primary {
+      background: rgba(77,163,255,.18);
+      border-color: rgba(77,163,255,.28);
+    }
+    button.danger {
+      background: rgba(255,90,106,.16);
+      border-color: rgba(255,90,106,.26);
+    }
+    button:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
 
-    .memo-row { display: grid; grid-template-columns: 1fr 92px; gap: 8px; margin-bottom: 10px; }
+    /* ✅ 메모 */
+    .memo-row {
+      display: grid;
+      grid-template-columns: 1fr 92px;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
     .memo-row > * { min-width: 0; }
-    .memo-list { display: flex; flex-wrap: wrap; gap: 8px; }
-    .chip {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 8px 10px; border-radius: 999px;
-      background: var(--chip); border: 1px solid var(--line);
-      font-size: 13px; font-weight: 300;
+    .memo-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
     }
-    .chip button { width: auto; padding: 6px 8px; border-radius: 999px; font-size: 12px; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: var(--chip);
+      border: 1px solid var(--line);
+      font-size: 13px;
+      font-weight: 300;
+    }
+    .chip form { margin: 0; }
+    .chip button {
+      width: auto;
+      padding: 6px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
 
-    .calendar-wrap { padding: 0; border: none; background: transparent; }
-    #calendar { width: 100%; min-height: 560px; background: transparent; }
+    /* ✅ 캘린더: 박스 제거 + 크게 */
+    .calendar-wrap {
+      padding: 0;
+      border: none;
+      background: transparent;
+    }
+    #calendar {
+      width: 100%;
+      min-height: 560px;
+      background: transparent;
+    }
 
     .fc { font-size: 13px; font-weight: 300; }
     .fc .fc-toolbar-title { font-size: 15px; font-weight: 600; }
@@ -128,9 +225,19 @@
       box-shadow: none !important;
       font-weight: 600 !important;
     }
+    .fc .fc-button:hover { background: rgba(255,255,255,.10) !important; }
     .fc-theme-standard td, .fc-theme-standard th { border-color: rgba(255,255,255,.06); }
+    .fc .fc-scrollgrid, .fc .fc-scrollgrid-section > * { border-color: rgba(255,255,255,.06); }
 
-    .ev-row { display: inline-flex; gap: 6px; align-items: baseline; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    .ev-row {
+      display: inline-flex;
+      gap: 6px;
+      align-items: baseline;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
     .ev-title { overflow: hidden; text-overflow: ellipsis; }
     .ev-time { opacity: .75; flex: 0 0 auto; }
 
@@ -142,6 +249,7 @@
       .fc .fc-toolbar { flex-wrap: wrap; gap: 6px; }
     }
 
+    /* ✅ 모달 */
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -160,14 +268,23 @@
       border: 1px solid var(--line);
       border-radius: 16px;
       padding: 12px;
-      pointer-events: auto;
+      pointer-events: auto; /* ✅ 저장 버튼 탭 무시되는 현상 방지 */
     }
     .modal h4 { margin: 4px 2px 10px; font-size: 14px; font-weight: 600; }
-    .modal .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .modal .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
     .modal .row { display: grid; gap: 6px; margin-bottom: 8px; }
     .modal label { color: var(--muted); font-size: 11px; font-weight: 300; }
     .modal textarea { min-height: 88px; resize: none; }
-    .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+    .modal .actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 10px;
+    }
   </style>
 </head>
 
@@ -198,19 +315,22 @@
     <div class="section">
       <div class="section-title">
         <h3>메모</h3>
-        <div class="hint">3초 동기화</div>
+        <div class="hint">업데이트해도 데이터 유지</div>
       </div>
 
-      <form method="POST" class="memo-row" id="memoForm">
-        <input type="text" name="memo_keyword" id="memoInput" placeholder="메모 추가..." autocomplete="off" inputmode="text">
+      <form method="POST" class="memo-row">
+        <input type="text" name="memo_keyword" placeholder="메모 추가..." autocomplete="off" inputmode="text">
         <button class="primary" type="submit" name="action" value="add_memo">추가</button>
       </form>
 
-      <div class="memo-list" id="memoList">
+      <div class="memo-list">
         {% for m in memo_list %}
           <div class="chip">
             <span>{{ m }}</span>
-            <button class="danger" type="button" data-memo="{{ m }}">삭제</button>
+            <form method="POST">
+              <input type="hidden" name="memo_keyword" value="{{ m }}">
+              <button class="danger" type="submit" name="action" value="delete_memo">삭제</button>
+            </form>
           </div>
         {% endfor %}
       </div>
@@ -219,7 +339,7 @@
     <div class="calendar-wrap">
       <div class="section-title" style="margin: 6px 2px 10px;">
         <h3>캘린더</h3>
-        <div class="hint">5초 동기화</div>
+        <div class="hint">탭 또는 꾹누름 → 일정 추가</div>
       </div>
       <div id="calendar"></div>
     </div>
@@ -279,92 +399,15 @@
       });
       return await r.json();
     }
-    async function jdel(url, body) {
-      const r = await fetch(url, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: body ? JSON.stringify(body) : null
-      });
+    async function jdel(url) {
+      const r = await fetch(url, { method: "DELETE" });
       return await r.json();
     }
 
     // =========================
-    // ✅ 메모 AJAX + 3초 폴링
-    // =========================
-    const memoListEl = document.getElementById("memoList");
-    const memoForm = document.getElementById("memoForm");
-    const memoInput = document.getElementById("memoInput");
-
-    function renderMemos(memos) {
-      memoListEl.innerHTML = "";
-      (memos || []).forEach((m) => {
-        const chip = document.createElement("div");
-        chip.className = "chip";
-
-        const span = document.createElement("span");
-        span.textContent = m;
-
-        const delBtn = document.createElement("button");
-        delBtn.className = "danger";
-        delBtn.type = "button";
-        delBtn.textContent = "삭제";
-        delBtn.addEventListener("click", async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          try {
-            const res = await jdel("/api/memos", { content: m });
-            if (!res || !res.ok) throw new Error(res?.error || "delete_failed");
-            await loadMemosOnce();
-          } catch (err) {
-            alert("메모 삭제 실패: " + (err?.message || err));
-          }
-        });
-
-        chip.appendChild(span);
-        chip.appendChild(delBtn);
-        memoListEl.appendChild(chip);
-      });
-    }
-
-    let _memoLastHash = "";
-    async function loadMemosOnce() {
-      const data = await jget("/api/memos");
-      if (data && data.ok) {
-        const memos = data.memos || [];
-        const hash = JSON.stringify(memos);
-        if (hash !== _memoLastHash) {
-          _memoLastHash = hash;
-          renderMemos(memos);
-        }
-      }
-    }
-    function pollMemos() {
-      loadMemosOnce().catch(() => {});
-      setTimeout(pollMemos, 3000);
-    }
-
-    memoForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const content = (memoInput.value || "").trim();
-      if (!content) return;
-
-      memoInput.disabled = true;
-      try {
-        const res = await jpost("/api/memos", { content });
-        if (!res || !res.ok) throw new Error(res?.error || "add_failed");
-        memoInput.value = "";
-        await loadMemosOnce();
-      } catch (err) {
-        alert("메모 추가 실패: " + (err?.message || err));
-      } finally {
-        memoInput.disabled = false;
-        memoInput.focus();
-      }
-    });
-
-    // =========================
-    // ✅ 채팅 (0.7초 폴링)
+    // ✅ 채팅 (늦게 뜨는 문제 개선)
+    // - 폴링 2초 -> 0.7초
+    // - send 성공 시 즉시 append
     // =========================
     let lastChatId = 0;
     const chatBox = document.getElementById("chatMessages");
@@ -378,6 +421,7 @@
         "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
       }[c]));
     }
+
     function appendMsg(m) {
       const wrap = document.createElement("div");
       wrap.className = "msg";
@@ -408,10 +452,12 @@
         }
       }
     }
+
     async function pollChat() {
       try { await pollChatOnce(); } catch (e) {}
       setTimeout(pollChat, 700);
     }
+
     async function sendChat() {
       const sender = (chatSender.value || "익명").trim();
       const message = (chatInput.value || "").trim();
@@ -423,10 +469,13 @@
       try {
         chatInput.value = "";
         const res = await jpost("/api/chat/send", { room: CHAT_ROOM, sender, message });
+
+        // ✅ 서버가 id/created_at을 주면, 폴링 기다리지 말고 즉시 추가
         if (res && res.ok) {
           appendMsg({ id: res.id, sender, message, created_at: res.created_at || "" });
           lastChatId = Math.max(lastChatId, res.id || lastChatId);
         } else {
+          // 실패하면 한 번 더 폴링
           await pollChatOnce();
         }
       } catch (e) {
@@ -444,7 +493,9 @@
     });
 
     // =========================
-    // ✅ 캘린더 + 5초 폴링
+    // ✅ 캘린더 + 모달 (저장 버튼 안눌림 개선)
+    // - 버튼 type=button
+    // - 클릭시 stopPropagation
     // =========================
     const modalBackdrop = document.getElementById("modalBackdrop");
     const modalTitle = document.getElementById("modalTitle");
@@ -461,6 +512,7 @@
 
     function openModal(mode, payload) {
       currentEventId = payload?.id ?? null;
+
       modalTitle.textContent = mode === "edit" ? "일정 수정" : "일정 추가";
       evDelete.style.display = mode === "edit" ? "inline-flex" : "none";
 
@@ -471,13 +523,16 @@
 
       modalBackdrop.style.display = "flex";
     }
+
     function closeModal() {
       modalBackdrop.style.display = "none";
       currentEventId = null;
     }
 
     evCancel.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); closeModal(); });
-    modalBackdrop.addEventListener("click", (e) => { if (e.target === modalBackdrop) closeModal(); });
+    modalBackdrop.addEventListener("click", (e) => {
+      if (e.target === modalBackdrop) closeModal();
+    });
 
     evSave.addEventListener("click", async (e) => {
       e.preventDefault();
@@ -488,26 +543,19 @@
       const end = (evEnd.value || "").trim();
       const memo = (evMemo.value || "").trim();
 
-      if (!title || !start) {
-        alert("제목과 시작은 필수입니다.");
-        return;
-      }
+      if (!title || !start) return;
 
       evSave.disabled = true;
+
       try {
         if (currentEventId) {
-          const res = await jput(`/api/events/${currentEventId}`, { title, start, end: end || null, memo });
-          if (!res || !res.ok) throw new Error(res?.error || "수정 실패");
-          closeModal();
-          calendar.refetchEvents();
+          await jput(`/api/events/${currentEventId}`, { title, start, end: end || null, memo });
         } else {
-          const res = await jpost("/api/events", { title, start, end: end || null, allDay: false, memo });
-          if (!res || !res.ok || !res.event) throw new Error(res?.error || "저장 실패");
-          calendar.addEvent(res.event);
-          closeModal();
+          await jpost("/api/events", { title, start, end: end || null, allDay: false, memo });
         }
+        closeModal();
+        calendar.refetchEvents();
       } catch (e2) {
-        alert("캘린더 저장 실패: " + (e2?.message || e2));
       } finally {
         evSave.disabled = false;
       }
@@ -516,17 +564,17 @@
     evDelete.addEventListener("click", async (e) => {
       e.preventDefault();
       e.stopPropagation();
+
       if (!currentEventId) return;
       if (!confirm("이 일정을 삭제할까요?")) return;
 
       evDelete.disabled = true;
+
       try {
-        const res = await fetch(`/api/events/${currentEventId}`, { method: "DELETE" }).then(r => r.json());
-        if (!res || !res.ok) throw new Error(res?.error || "삭제 실패");
+        await jdel(`/api/events/${currentEventId}`);
         closeModal();
         calendar.refetchEvents();
       } catch (e2) {
-        alert("삭제 실패: " + (e2?.message || e2));
       } finally {
         evDelete.disabled = false;
       }
@@ -537,6 +585,7 @@
 
       calendar = new FullCalendar.Calendar(calEl, {
         initialView: "dayGridMonth",
+          timeZone: "Asia/Seoul",
         height: "auto",
         expandRows: true,
         nowIndicator: true,
@@ -555,8 +604,13 @@
           }
         },
 
-        dateClick: (arg) => openModal("add", { title: "", start: arg.dateStr, end: "", memo: "" }),
-        select: (sel) => openModal("add", { title: "", start: sel.startStr, end: sel.endStr || "", memo: "" }),
+        dateClick: (arg) => {
+          openModal("add", { title: "", start: arg.dateStr, end: "", memo: "" });
+        },
+
+        select: (sel) => {
+          openModal("add", { title: "", start: sel.startStr, end: sel.endStr || "", memo: "" });
+        },
 
         eventClick: (info) => {
           const e = info.event;
@@ -589,14 +643,9 @@
       });
 
       calendar.render();
-
-      setInterval(() => {
-        try { calendar.refetchEvents(); } catch (e) {}
-      }, 5000);
     }
 
     pollChat();
-    pollMemos();
     initCalendar();
   </script>
 </body>
