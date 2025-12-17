@@ -6,15 +6,18 @@ import requests
 from bs4 import BeautifulSoup
 from flask_cors import CORS
 
+# ✅ Postgres(Supabase) 연결용
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 import psycopg
+import threading
 
 app = Flask(__name__)
 CORS(app)
 
 tz = pytz.timezone("Asia/Seoul")
 
-_DB_READY = False  # ✅ 추가
+_DB_READY = False
+_DB_LOCK = threading.Lock()
 
 
 def _safe_mkdir(path: str) -> bool:
@@ -30,14 +33,19 @@ def _safe_mkdir(path: str) -> bool:
         return False
 
 
+# ===============================
+# ✅ DB URL (Supabase Postgres)
+# ===============================
 def _get_database_url():
     url = (os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URLSupabase") or "").strip()
     if not url:
         raise RuntimeError("DATABASE_URL(또는 DATABASE_URLSupabase) 환경변수가 없습니다. Render Environment에 설정하세요.")
 
+    # postgres:// -> postgresql:// 정규화
     if url.startswith("postgres://"):
-        url = "postgresql://" + url[len("postgres://"):]
+        url = "postgresql://" + url[len("postgres://") :]
 
+    # sslmode=require 강제(없으면 추가)
     u = urlparse(url)
     q = dict(parse_qsl(u.query))
     if "sslmode" not in q:
@@ -45,7 +53,19 @@ def _get_database_url():
         u = u._replace(query=urlencode(q))
         url = urlunparse(u)
 
-    print(f"✅ Using DATABASE_URL: {urlparse(url)._replace(netloc='***').geturl()}")
+    # ✅ 로그(비번 마스킹)
+    try:
+        masked = url
+        if "://" in masked and "@" in masked:
+            head, tail = masked.split("://", 1)
+            cred, rest = tail.split("@", 1)
+            if ":" in cred:
+                user, _pw = cred.split(":", 1)
+                masked = f"{head}://{user}:***@{rest}"
+        print(f"✅ Using DATABASE_URL: {masked}")
+    except Exception:
+        pass
+
     return url
 
 
@@ -53,11 +73,12 @@ def get_conn():
     return psycopg.connect(_get_database_url(), connect_timeout=10)
 
 
+# ===============================
+# ✅ DB 초기화 (한 번만)
+# - ⚠️ end 는 postgres 예약어라 컬럼명으로 쓰면 에러남
+#   -> end_at 으로 변경
+# ===============================
 def init_db():
-    global _DB_READY
-    if _DB_READY:
-        return  # ✅ 핵심: 매 요청마다 DDL 실행 방지
-
     ddl = """
     create table if not exists memos (
         id bigserial primary key,
@@ -69,8 +90,8 @@ def init_db():
     create table if not exists events (
         id bigserial primary key,
         title text not null,
-        start text not null,
-        "end" text,
+        start_at text not null,
+        end_at text,
         all_day integer default 0,
         memo text,
         created_at timestamptz default now()
@@ -83,16 +104,28 @@ def init_db():
         message text not null,
         created_at timestamptz default now()
     );
+    create index if not exists chat_room_id_idx on chat_messages(room, id);
     """
-
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(ddl)
         conn.commit()
 
-    _DB_READY = True  # ✅ 추가
+
+def ensure_db():
+    global _DB_READY
+    if _DB_READY:
+        return
+    with _DB_LOCK:
+        if _DB_READY:
+            return
+        init_db()
+        _DB_READY = True
 
 
+# ===============================
+# ✅ 환율 (캐시)
+# ===============================
 cached_rate = {"value": None, "fetched_date": None}
 
 
@@ -126,14 +159,25 @@ def get_adjusted_exchange_rate():
     return cached_rate["value"]
 
 
+# ===============================
+# ✅ Health (UptimeRobot)
+# ===============================
 @app.route("/health", methods=["GET", "HEAD"])
 def health():
     return ("", 200)
 
 
+# ===============================
+# ✅ 메인
+# - Render가 / 에 HEAD를 때리는 경우가 있어서,
+#   HEAD는 DB 안건드리고 200만 반환
+# ===============================
 @app.route("/", methods=["GET", "POST", "HEAD"])
 def index():
-    init_db()
+    if request.method == "HEAD":
+        return ("", 200)
+
+    ensure_db()
 
     if request.method == "POST":
         action = request.form.get("action")
@@ -166,12 +210,15 @@ def index():
     )
 
 
+# ===============================
+# ✅ 캘린더 API
+# ===============================
 @app.route("/api/events", methods=["GET"])
 def get_events():
-    init_db()
+    ensure_db()
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute('select id, title, start, "end", all_day, memo from events')
+            cur.execute("select id, title, start_at, end_at, all_day, memo from events")
             rows = cur.fetchall()
 
     return jsonify(
@@ -191,14 +238,14 @@ def get_events():
 
 @app.route("/api/events", methods=["POST"])
 def add_event():
-    init_db()
+    ensure_db()
     data = request.get_json() or {}
 
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                insert into events (title, start, "end", all_day, memo, created_at)
+                insert into events (title, start_at, end_at, all_day, memo, created_at)
                 values (%s, %s, %s, %s, %s, %s)
                 returning id
                 """,
@@ -219,13 +266,13 @@ def add_event():
 
 @app.route("/api/events/<int:event_id>", methods=["PUT"])
 def update_event(event_id):
-    init_db()
+    ensure_db()
     data = request.get_json() or {}
 
     fields = []
     values = []
 
-    for key, col in [("title", "title"), ("start", "start"), ("end", '"end"'), ("memo", "memo")]:
+    for key, col in [("title", "title"), ("start", "start_at"), ("end", "end_at"), ("memo", "memo")]:
         if key in data:
             fields.append(f"{col}=%s")
             values.append(data[key])
@@ -249,7 +296,7 @@ def update_event(event_id):
 
 @app.route("/api/events/<int:event_id>", methods=["DELETE"])
 def delete_event(event_id):
-    init_db()
+    ensure_db()
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("delete from events where id=%s", (event_id,))
@@ -257,10 +304,14 @@ def delete_event(event_id):
     return jsonify({"ok": True})
 
 
+# ===============================
+# ✅ 채팅 API
+# ===============================
 @app.route("/api/chat/messages", methods=["GET"])
 def chat_messages():
-    init_db()
+    ensure_db()
     after_id = int(request.args.get("after_id", 0))
+    room = (request.args.get("room") or "main").strip() or "main"
 
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -268,10 +319,10 @@ def chat_messages():
                 """
                 select id, sender, message, created_at
                 from chat_messages
-                where id > %s
+                where room = %s and id > %s
                 order by id asc
                 """,
-                (after_id,),
+                (room, after_id),
             )
             rows = cur.fetchall()
 
@@ -279,7 +330,12 @@ def chat_messages():
         {
             "ok": True,
             "messages": [
-                {"id": r[0], "sender": r[1], "message": r[2], "created_at": r[3].isoformat() if r[3] else None}
+                {
+                    "id": r[0],
+                    "sender": r[1],
+                    "message": r[2],
+                    "created_at": r[3].isoformat() if r[3] else None,
+                }
                 for r in rows
             ],
         }
@@ -288,13 +344,16 @@ def chat_messages():
 
 @app.route("/api/chat/send", methods=["POST"])
 def send_chat():
-    init_db()
+    ensure_db()
     data = request.get_json() or {}
 
+    room = (data.get("room") or "main").strip() or "main"
     sender = (data.get("sender") or "익명").strip()
     message = (data.get("message") or "").strip()
     if not message:
         return jsonify({"ok": False, "error": "empty_message"}), 400
+
+    now = datetime.now(tz)
 
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -304,15 +363,16 @@ def send_chat():
                 values (%s, %s, %s, %s)
                 returning id
                 """,
-                ("main", sender, message, datetime.now(tz)),
+                (room, sender, message, now),
             )
             msg_id = cur.fetchone()[0]
         conn.commit()
 
-    return jsonify({"ok": True, "id": msg_id})
+    # ✅ 프론트에서 "바로 표시" 할 수 있게 created_at도 같이 반환
+    return jsonify({"ok": True, "id": msg_id, "created_at": now.isoformat()})
 
 
 if __name__ == "__main__":
-    init_db()
+    ensure_db()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
