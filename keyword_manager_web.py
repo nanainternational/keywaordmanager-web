@@ -75,8 +75,6 @@ def get_conn():
 
 # ===============================
 # ✅ DB 초기화 (한 번만)
-# - ⚠️ end 는 postgres 예약어라 컬럼명으로 쓰면 에러남
-#   -> end_at 으로 변경
 # ===============================
 def init_db():
     ddl = """
@@ -169,8 +167,6 @@ def health():
 
 # ===============================
 # ✅ 메인
-# - Render가 / 에 HEAD를 때리는 경우가 있어서,
-#   HEAD는 DB 안건드리고 200만 반환
 # ===============================
 @app.route("/", methods=["GET", "POST", "HEAD"])
 def index():
@@ -237,97 +233,105 @@ def get_events():
 
 
 # ===============================
-# ✅ [섹션 A] 일정 추가 (POST) - 수정됨
-# - 성공 시 FullCalendar용 event 객체 반환
-# - 실패 시 ok:false + 400/500
+# ✅ [섹션 A] 일정 추가 (POST) - JSON 보장
+# - 어떤 에러가 나도 HTML 대신 JSON(ok:false)로 반환
 # ===============================
 @app.route("/api/events", methods=["POST"])
 def add_event():
     ensure_db()
-    data = request.get_json() or {}
+    try:
+        data = request.get_json() or {}
 
-    title = (data.get("title") or "").strip()
-    start = (data.get("start") or "").strip()
-    end = data.get("end")
-    memo = (data.get("memo") or "").strip()
-    all_day = 1 if data.get("allDay") else 0
+        title = (data.get("title") or "").strip()
+        start = (data.get("start") or "").strip()
+        end = data.get("end")
+        memo = (data.get("memo") or "").strip()
+        all_day = 1 if data.get("allDay") else 0
 
-    if not title or not start:
-        return jsonify({"ok": False, "error": "title/start required"}), 400
+        if not title or not start:
+            return jsonify({"ok": False, "error": "title/start required"}), 400
 
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                insert into events (title, start_at, end_at, all_day, memo, created_at)
-                values (%s, %s, %s, %s, %s, %s)
-                returning id
-                """,
-                (
-                    title,
-                    start,
-                    end,
-                    all_day,
-                    memo,
-                    datetime.now(tz),
-                ),
-            )
-            event_id = cur.fetchone()[0]
-        conn.commit()
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    insert into events (title, start_at, end_at, all_day, memo, created_at)
+                    values (%s, %s, %s, %s, %s, %s)
+                    returning id
+                    """,
+                    (
+                        title,
+                        start,
+                        end,
+                        all_day,
+                        memo,
+                        datetime.now(tz),
+                    ),
+                )
+                event_id = cur.fetchone()[0]
+            conn.commit()
 
-    return jsonify(
-        {
-            "ok": True,
-            "event": {
-                "id": event_id,
-                "title": title,
-                "start": start,
-                "end": end,
-                "allDay": bool(all_day),
-                "extendedProps": {"memo": memo},
-            },
-        }
-    )
+        return jsonify(
+            {
+                "ok": True,
+                "event": {
+                    "id": event_id,
+                    "title": title,
+                    "start": start,
+                    "end": end,
+                    "allDay": bool(all_day),
+                    "extendedProps": {"memo": memo},
+                },
+            }
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/events/<int:event_id>", methods=["PUT"])
 def update_event(event_id):
     ensure_db()
-    data = request.get_json() or {}
+    try:
+        data = request.get_json() or {}
 
-    fields = []
-    values = []
+        fields = []
+        values = []
 
-    for key, col in [("title", "title"), ("start", "start_at"), ("end", "end_at"), ("memo", "memo")]:
-        if key in data:
-            fields.append(f"{col}=%s")
-            values.append(data[key])
+        for key, col in [("title", "title"), ("start", "start_at"), ("end", "end_at"), ("memo", "memo")]:
+            if key in data:
+                fields.append(f"{col}=%s")
+                values.append(data[key])
 
-    if "allDay" in data:
-        fields.append("all_day=%s")
-        values.append(1 if data["allDay"] else 0)
+        if "allDay" in data:
+            fields.append("all_day=%s")
+            values.append(1 if data["allDay"] else 0)
 
-    if not fields:
+        if not fields:
+            return jsonify({"ok": True})
+
+        values.append(event_id)
+
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"update events set {', '.join(fields)} where id=%s", values)
+            conn.commit()
+
         return jsonify({"ok": True})
-
-    values.append(event_id)
-
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(f"update events set {', '.join(fields)} where id=%s", values)
-        conn.commit()
-
-    return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/events/<int:event_id>", methods=["DELETE"])
 def delete_event(event_id):
     ensure_db()
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("delete from events where id=%s", (event_id,))
-        conn.commit()
-    return jsonify({"ok": True})
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("delete from events where id=%s", (event_id,))
+            conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 # ===============================
@@ -394,7 +398,6 @@ def send_chat():
             msg_id = cur.fetchone()[0]
         conn.commit()
 
-    # ✅ 프론트에서 "바로 표시" 할 수 있게 created_at도 같이 반환
     return jsonify({"ok": True, "id": msg_id, "created_at": now.isoformat()})
 
 
