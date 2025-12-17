@@ -207,12 +207,12 @@
         <div class="hint">업데이트해도 데이터 유지</div>
       </div>
 
-      <form method="POST" class="memo-row">
-        <input type="text" name="memo_keyword" placeholder="메모 추가..." autocomplete="off" inputmode="text">
+      <form method="POST" class="memo-row" id="memoForm">
+        <input type="text" name="memo_keyword" id="memoInput" placeholder="메모 추가..." autocomplete="off" inputmode="text">
         <button class="primary" type="submit" name="action" value="add_memo">추가</button>
       </form>
 
-      <div class="memo-list">
+      <div class="memo-list" id="memoList">
         {% for m in memo_list %}
           <div class="chip">
             <span>{{ m }}</span>
@@ -268,38 +268,18 @@
   </div>
 
   <script>
-    async function safeJson(r) {
-      const text = await r.text();
-      try {
-        return { ok: true, data: JSON.parse(text) };
-      } catch (e) {
-        return { ok: false, text };
-      }
-    }
-
     async function jget(url) {
       const r = await fetch(url, { cache: "no-store" });
-      const parsed = await safeJson(r);
-      if (!parsed.ok) throw new Error(`NON_JSON(${r.status}) ${parsed.text?.slice(0, 200) || ""}`);
-      return parsed.data;
+      return await r.json();
     }
 
-    // =========================
-    // ✅ [섹션 B] JSON 파서 강화
-    // - JSON이 아니면 HTML 일부를 에러로 보여줌
-    // =========================
     async function jpost(url, body) {
       const r = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
-
-      const parsed = await safeJson(r);
-      if (!parsed.ok) {
-        throw new Error(`NON_JSON(${r.status}) ${parsed.text?.slice(0, 200) || ""}`);
-      }
-      return parsed.data;
+      return await r.json();
     }
 
     async function jput(url, body) {
@@ -308,23 +288,97 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
-
-      const parsed = await safeJson(r);
-      if (!parsed.ok) {
-        throw new Error(`NON_JSON(${r.status}) ${parsed.text?.slice(0, 200) || ""}`);
-      }
-      return parsed.data;
+      return await r.json();
     }
 
     async function jdel(url) {
       const r = await fetch(url, { method: "DELETE" });
-
-      const parsed = await safeJson(r);
-      if (!parsed.ok) {
-        throw new Error(`NON_JSON(${r.status}) ${parsed.text?.slice(0, 200) || ""}`);
-      }
-      return parsed.data;
+      return await r.json();
     }
+
+    // =========================
+    // ✅ [섹션 B] 메모: AJAX + 동기화(폴링)
+    // - 페이지 리로드 없이 추가/삭제
+    // - 3초마다 서버와 동기화
+    // =========================
+    const memoListEl = document.getElementById("memoList");
+    const memoForm = document.getElementById("memoForm");
+    const memoInput = document.getElementById("memoInput");
+
+    function renderMemos(memos) {
+      memoListEl.innerHTML = "";
+      (memos || []).forEach((m) => {
+        const chip = document.createElement("div");
+        chip.className = "chip";
+
+        const span = document.createElement("span");
+        span.textContent = m;
+
+        const delBtn = document.createElement("button");
+        delBtn.className = "danger";
+        delBtn.type = "button";
+        delBtn.textContent = "삭제";
+        delBtn.addEventListener("click", async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          try {
+            const res = await fetch("/api/memos", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ content: m }),
+            });
+            const data = await res.json();
+            if (!data || !data.ok) throw new Error(data?.error || "delete_failed");
+            await loadMemosOnce();
+          } catch (err) {
+            alert("메모 삭제 실패: " + (err?.message || err));
+          }
+        });
+
+        chip.appendChild(span);
+        chip.appendChild(delBtn);
+        memoListEl.appendChild(chip);
+      });
+    }
+
+    let _memoLastHash = "";
+    async function loadMemosOnce() {
+      const data = await jget("/api/memos");
+      if (data && data.ok) {
+        const memos = data.memos || [];
+        const hash = JSON.stringify(memos);
+        if (hash !== _memoLastHash) {
+          _memoLastHash = hash;
+          renderMemos(memos);
+        }
+      }
+    }
+
+    function pollMemos() {
+      loadMemosOnce().catch(() => {});
+      setTimeout(pollMemos, 3000);
+    }
+
+    memoForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const content = (memoInput.value || "").trim();
+      if (!content) return;
+
+      memoInput.disabled = true;
+      try {
+        const res = await jpost("/api/memos", { content });
+        if (!res || !res.ok) throw new Error(res?.error || "add_failed");
+        memoInput.value = "";
+        await loadMemosOnce();
+      } catch (err) {
+        alert("메모 추가 실패: " + (err?.message || err));
+      } finally {
+        memoInput.disabled = false;
+        memoInput.focus();
+      }
+    });
 
     // =========================
     // ✅ 채팅
@@ -450,10 +504,6 @@
       if (e.target === modalBackdrop) closeModal();
     });
 
-    // =========================
-    // ✅ [섹션 C] 저장 버튼
-    // - 실패 시: 서버의 error 또는 NON_JSON 내용을 그대로 alert
-    // =========================
     evSave.addEventListener("click", async (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -568,9 +618,16 @@
       });
 
       calendar.render();
+
+      // ✅ [섹션 C] 캘린더 동기화(폴링)
+      // 다른 탭/기기에서 추가된 일정도 5초 내 반영
+      setInterval(() => {
+        try { calendar.refetchEvents(); } catch (e) {}
+      }, 5000);
     }
 
     pollChat();
+    pollMemos();
     initCalendar();
   </script>
 </body>
