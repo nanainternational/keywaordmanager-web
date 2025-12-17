@@ -534,6 +534,12 @@
       if (e.target === modalBackdrop) closeModal();
     });
 
+    // =========================
+    // ✅ [섹션 B] 저장 버튼 (핵심 수정)
+    // - 신규 저장: 서버가 event를 내려주면 calendar.addEvent로 즉시 반영
+    // - 수정 저장: ok 확인 후 refetch
+    // - 실패시 alert + 모달 유지
+    // =========================
     evSave.addEventListener("click", async (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -543,19 +549,35 @@
       const end = (evEnd.value || "").trim();
       const memo = (evMemo.value || "").trim();
 
-      if (!title || !start) return;
+      if (!title || !start) {
+        alert("제목과 시작은 필수입니다.");
+        return;
+      }
 
       evSave.disabled = true;
 
       try {
         if (currentEventId) {
-          await jput(`/api/events/${currentEventId}`, { title, start, end: end || null, memo });
+          const res = await jput(`/api/events/${currentEventId}`, { title, start, end: end || null, memo });
+          if (!res || !res.ok) {
+            throw new Error(res?.error || "수정 실패");
+          }
+          closeModal();
+          calendar.refetchEvents();
         } else {
-          await jpost("/api/events", { title, start, end: end || null, allDay: false, memo });
+          const res = await jpost("/api/events", { title, start, end: end || null, allDay: false, memo });
+
+          if (!res || !res.ok || !res.event) {
+            throw new Error(res?.error || "저장 실패");
+          }
+
+          // ✅ 즉시 반영 (가장 중요)
+          calendar.addEvent(res.event);
+
+          closeModal();
         }
-        closeModal();
-        calendar.refetchEvents();
       } catch (e2) {
+        alert("캘린더 저장 실패: " + (e2?.message || e2));
       } finally {
         evSave.disabled = false;
       }
@@ -571,10 +593,14 @@
       evDelete.disabled = true;
 
       try {
-        await jdel(`/api/events/${currentEventId}`);
+        const res = await jdel(`/api/events/${currentEventId}`);
+        if (!res || !res.ok) {
+          throw new Error(res?.error || "삭제 실패");
+        }
         closeModal();
         calendar.refetchEvents();
       } catch (e2) {
+        alert("삭제 실패: " + (e2?.message || e2));
       } finally {
         evDelete.disabled = false;
       }
