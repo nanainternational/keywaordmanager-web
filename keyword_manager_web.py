@@ -6,7 +6,6 @@ import requests
 from bs4 import BeautifulSoup
 from flask_cors import CORS
 
-# ✅ Postgres(Supabase) 연결용
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 import psycopg
 
@@ -14,6 +13,8 @@ app = Flask(__name__)
 CORS(app)
 
 tz = pytz.timezone("Asia/Seoul")
+
+_DB_READY = False  # ✅ 추가
 
 
 def _safe_mkdir(path: str) -> bool:
@@ -29,35 +30,14 @@ def _safe_mkdir(path: str) -> bool:
         return False
 
 
-# ===============================
-# ✅ DB URL (Supabase Postgres)
-# - Render에 DATABASE_URL을 권장
-# ===============================
-def _has_bad_percent(s: str) -> bool:
-    # conn URI에서 %는 반드시 %25 같은 "퍼센트 인코딩" 형태여야 함
-    # % 다음에 2자리 hex가 아니면 "깨진 URI"로 봄
-    import re
-    return re.search(r"%(?![0-9A-Fa-f]{2})", s) is not None
-
-
 def _get_database_url():
-    raw = (os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URLSupabase") or "").strip()
-    if not raw:
+    url = (os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URLSupabase") or "").strip()
+    if not url:
         raise RuntimeError("DATABASE_URL(또는 DATABASE_URLSupabase) 환경변수가 없습니다. Render Environment에 설정하세요.")
 
-    # postgres:// -> postgresql:// 정규화
-    url = raw
     if url.startswith("postgres://"):
         url = "postgresql://" + url[len("postgres://"):]
 
-    # ✅ 흔한 실수: password에 %가 있는데 %25로 인코딩 안 함
-    if _has_bad_percent(url):
-        raise RuntimeError(
-            "DATABASE_URL에 인코딩되지 않은 % 가 포함되어 있습니다.\n"
-            "예) 비밀번호가 Cjdekarh35% 라면 URL에서는 Cjdekarh35%25 로 써야 합니다."
-        )
-
-    # sslmode=require 강제(없으면 추가)
     u = urlparse(url)
     q = dict(parse_qsl(u.query))
     if "sslmode" not in q:
@@ -65,28 +45,19 @@ def _get_database_url():
         u = u._replace(query=urlencode(q))
         url = urlunparse(u)
 
-    # ✅ 어떤 URL로 붙는지 확인용(비번은 절대 출력하지 않게 마스킹)
-    try:
-        u2 = urlparse(url)
-        masked = url
-        if u2.password:
-            masked = url.replace(u2.password, "***")
-        print(f"✅ Using DATABASE_URL: {masked}")
-    except Exception:
-        pass
-
+    print(f"✅ Using DATABASE_URL: {urlparse(url)._replace(netloc='***').geturl()}")
     return url
 
 
 def get_conn():
-    # connect_timeout은 Render에서 문제 추적할 때 좋아서 넣음
     return psycopg.connect(_get_database_url(), connect_timeout=10)
 
 
-# ===============================
-# ✅ DB 초기화 (Supabase에 테이블/인덱스 보장)
-# ===============================
 def init_db():
+    global _DB_READY
+    if _DB_READY:
+        return  # ✅ 핵심: 매 요청마다 DDL 실행 방지
+
     ddl = """
     create table if not exists memos (
         id bigserial primary key,
@@ -99,7 +70,7 @@ def init_db():
         id bigserial primary key,
         title text not null,
         start text not null,
-        end_at text,
+        "end" text,
         all_day integer default 0,
         memo text,
         created_at timestamptz default now()
@@ -113,15 +84,15 @@ def init_db():
         created_at timestamptz default now()
     );
     """
+
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(ddl)
         conn.commit()
 
+    _DB_READY = True  # ✅ 추가
 
-# ===============================
-# ✅ 환율 (캐시)
-# ===============================
+
 cached_rate = {"value": None, "fetched_date": None}
 
 
@@ -155,17 +126,11 @@ def get_adjusted_exchange_rate():
     return cached_rate["value"]
 
 
-# ===============================
-# ✅ Health (UptimeRobot)
-# ===============================
 @app.route("/health", methods=["GET", "HEAD"])
 def health():
     return ("", 200)
 
 
-# ===============================
-# ✅ 메인
-# ===============================
 @app.route("/", methods=["GET", "POST", "HEAD"])
 def index():
     init_db()
@@ -201,15 +166,12 @@ def index():
     )
 
 
-# ===============================
-# ✅ 캘린더 API
-# ===============================
 @app.route("/api/events", methods=["GET"])
 def get_events():
     init_db()
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("select id, title, start, end, all_day, memo from events")
+            cur.execute('select id, title, start, "end", all_day, memo from events')
             rows = cur.fetchall()
 
     return jsonify(
@@ -236,7 +198,7 @@ def add_event():
         with conn.cursor() as cur:
             cur.execute(
                 """
-                insert into events (title, start, end, all_day, memo, created_at)
+                insert into events (title, start, "end", all_day, memo, created_at)
                 values (%s, %s, %s, %s, %s, %s)
                 returning id
                 """,
@@ -263,7 +225,7 @@ def update_event(event_id):
     fields = []
     values = []
 
-    for key, col in [("title", "title"), ("start", "start"), ("end", "end"), ("memo", "memo")]:
+    for key, col in [("title", "title"), ("start", "start"), ("end", '"end"'), ("memo", "memo")]:
         if key in data:
             fields.append(f"{col}=%s")
             values.append(data[key])
@@ -295,9 +257,6 @@ def delete_event(event_id):
     return jsonify({"ok": True})
 
 
-# ===============================
-# ✅ 채팅 API
-# ===============================
 @app.route("/api/chat/messages", methods=["GET"])
 def chat_messages():
     init_db()
