@@ -2,72 +2,72 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <!-- ✅ 모바일 입력창 눌렀을 때 확대(줌) 방지 -->
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-
-  <title>Keyword Manager Web</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>키워드 매니저</title>
 
   <!-- FullCalendar -->
-  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
   <style>
-    :root {
-      --bg: #0b0d10;
-      --panel: #11141a;
-      --line: rgba(255,255,255,.08);
-      --text: rgba(255,255,255,.90);
-      --muted: rgba(255,255,255,.62);
-      --chip: rgba(255,255,255,.08);
-      --accent: #4da3ff;
-      --danger: #ff5a6a;
+    :root{
+      --bg:#0b0f14;
+      --panel:#0f1620;
+      --panel2:#0d131c;
+      --border:#1b2a3a;
+      --text:#e7eef7;
+      --muted:#8aa0b7;
+      --brand:#4aa3ff;
+      --danger:#ff5c6c;
+      --ok:#46d39a;
+      --shadow: 0 12px 30px rgba(0,0,0,.35);
     }
-
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", Arial, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      text-rendering: optimizeLegibility;
-
-      /* ✅ 폰트 1 작게 + 얇게 */
-      font-size: 14px;
-      font-weight: 300;
-      overscroll-behavior: none;
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Arial, sans-serif;
+      background: radial-gradient(900px 500px at 50% -200px, rgba(74,163,255,.25), transparent 65%), var(--bg);
+      color:var(--text);
+      -webkit-tap-highlight-color: transparent;
     }
-
-    .wrap {
-      max-width: 920px;
+    a{ color:inherit; }
+    .wrap{
+      max-width: 980px;
       margin: 0 auto;
-      padding: 10px 10px 16px;
+      padding: 14px 14px 18px;
     }
-
-    /* ✅ 환율 섹션: 최소화(작게) */
-    .rate-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 7px 10px;
-      background: rgba(255,255,255,.04);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      margin-bottom: 10px;
+    .header{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:12px;
+      margin: 8px 2px 14px;
+    }
+    .header h1{
+      margin:0;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing:.2px;
+    }
+    .header .sub{
       font-size: 12px;
+      color: var(--muted);
+      font-weight: 300;
     }
-    .rate-bar .label { color: var(--muted); font-weight: 300; }
-    .rate-bar .val { font-weight: 600; letter-spacing: .2px; }
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01)), var(--panel);
+      border:1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 12px;
+      overflow:hidden;
+    }
 
-    .section {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 10px;
-      margin-bottom: 10px;
-    }
     .section-title {
       display: flex;
       align-items: center;
@@ -96,361 +96,432 @@
     /* ✅ 채팅 */
     .chat-box {
       height: 220px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .chat-messages {
-      flex: 1;
       overflow: auto;
-      padding: 8px;
+      background: var(--panel2);
+      border: 1px solid var(--border);
       border-radius: 12px;
-      background: rgba(255,255,255,.04);
-      border: 1px solid var(--line);
+      padding: 10px;
+      margin-bottom: 10px;
+      scroll-behavior: smooth;
     }
     .msg {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 8px;
-      align-items: flex-start;
+      display:flex;
+      gap:8px;
+      align-items:flex-start;
+      margin: 0 0 10px;
     }
-    .bubble {
-      max-width: 80%;
-      padding: 9px 11px;
-      border-radius: 14px;
-      background: rgba(255,255,255,.07);
-      border: 1px solid var(--line);
-      line-height: 1.25;
-      font-size: 13px;
-      font-weight: 300;
-      word-break: break-word;
+    .msg:last-child{ margin-bottom:0; }
+    .bubble{
+      max-width: 84%;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.02);
     }
-    .bubble b { font-weight: 600; }
-    .meta {
+    .meta{
+      font-size: 11px;
       color: var(--muted);
-      font-size: 10px;
-      margin-top: 3px;
+      margin-bottom: 4px;
       font-weight: 300;
     }
-
-    .chat-input-row {
-      width: 100%;
-      display: grid;
-      grid-template-columns: 82px 1fr 70px;
+    .text{ font-size: 13px; white-space: pre-wrap; line-height: 1.45; }
+    .me .bubble{
+      margin-left:auto;
+      background: rgba(74,163,255,.10);
+      border-color: rgba(74,163,255,.35);
+    }
+    .me{ justify-content:flex-end; }
+    .chat-input-row{
+      display:grid;
+      grid-template-columns: 90px 1fr 80px;
       gap: 8px;
-      align-items: center;
+      align-items:center;
     }
-    .chat-input-row > * { min-width: 0; }
-
-    input, textarea, button {
-      font: inherit;
+    input, textarea, select{
+      width:100%;
+      background: var(--panel2);
+      border: 1px solid var(--border);
       color: var(--text);
-      outline: none;
+      border-radius: 12px;
+      padding: 10px 11px;
+      font-size: 13px;
+      outline:none;
+      min-width: 0;
     }
-
-    input[type="text"], textarea {
-      font-size: 16px;
-      font-weight: 300;
-      background: rgba(255,255,255,.04);
-      border: 1px solid var(--line);
+    textarea{ min-height: 88px; resize: vertical; }
+    input::placeholder, textarea::placeholder{ color: rgba(138,160,183,.65); }
+    button{
+      width:100%;
+      border: 1px solid rgba(74,163,255,.45);
+      background: rgba(74,163,255,.18);
+      color: var(--text);
       border-radius: 12px;
       padding: 10px 12px;
-    }
-
-    button {
-      width: 100%;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,.06);
-      border-radius: 12px;
-      padding: 10px 10px;
-      cursor: pointer;
-      font-weight: 600;
       font-size: 13px;
-      touch-action: manipulation; /* ✅ 모바일 탭 반응 개선 */
+      font-weight: 700;
+      cursor: pointer;
+      user-select:none;
     }
-    button.primary {
-      background: rgba(77,163,255,.18);
-      border-color: rgba(77,163,255,.28);
+    button:disabled{
+      opacity:.55;
+      cursor:not-allowed;
     }
-    button.danger {
-      background: rgba(255,90,106,.16);
-      border-color: rgba(255,90,106,.26);
+    .btn-danger{
+      border-color: rgba(255,92,108,.55);
+      background: rgba(255,92,108,.16);
     }
-    button:disabled {
-      opacity: .55;
-      cursor: not-allowed;
+    .btn-ghost{
+      border-color: rgba(138,160,183,.35);
+      background: rgba(255,255,255,.02);
     }
+    .row{
+      display:flex;
+      gap:8px;
+      align-items:center;
+    }
+    .row > *{ flex:1; }
 
     /* ✅ 메모 */
-    .memo-row {
-      display: grid;
-      grid-template-columns: 1fr 92px;
-      gap: 8px;
-      margin-bottom: 10px;
+    .memo-list{
+      display:flex;
+      flex-direction:column;
+      gap: 10px;
+      margin-top: 10px;
     }
-    .memo-row > * { min-width: 0; }
-    .memo-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
+    .memo-item{
+      background: rgba(255,255,255,.02);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 10px 10px;
     }
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      border-radius: 999px;
-      background: var(--chip);
-      border: 1px solid var(--line);
-      font-size: 13px;
+    .memo-top{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      justify-content:space-between;
+      margin-bottom: 6px;
+    }
+    .memo-time{
+      font-size: 11px;
+      color: var(--muted);
       font-weight: 300;
+      white-space:nowrap;
     }
-    .chip form { margin: 0; }
-    .chip button {
-      width: auto;
-      padding: 6px 8px;
-      border-radius: 999px;
+    .memo-actions{
+      display:flex;
+      gap:6px;
+      align-items:center;
+    }
+    .mini{
+      padding: 7px 10px;
       font-size: 12px;
+      border-radius: 10px;
+      width: auto;
+    }
+    .memo-body{
+      font-size: 13px;
+      white-space: pre-wrap;
+      line-height: 1.45;
+    }
+    .memo-form textarea{
+      min-height: 64px;
     }
 
-    /* ✅ 캘린더: 박스 제거 + 크게 */
-    .calendar-wrap {
-      padding: 0;
-      border: none;
-      background: transparent;
+    /* ✅ 캘린더 */
+    #calendar{
+      background: rgba(255,255,255,.01);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 8px;
+      min-height: 660px;
+      overflow:hidden;
     }
-    #calendar {
+    .fc{
+      --fc-border-color: rgba(27,42,58,.8);
+      --fc-neutral-bg-color: rgba(255,255,255,.02);
+      --fc-page-bg-color: transparent;
+      --fc-today-bg-color: rgba(70,211,154,.10);
+      --fc-button-bg-color: rgba(74,163,255,.18);
+      --fc-button-border-color: rgba(74,163,255,.45);
+      --fc-button-text-color: var(--text);
+      --fc-button-active-bg-color: rgba(74,163,255,.28);
+      --fc-button-active-border-color: rgba(74,163,255,.65);
+      --fc-button-hover-bg-color: rgba(74,163,255,.25);
+      --fc-button-hover-border-color: rgba(74,163,255,.65);
+      --fc-event-bg-color: rgba(74,163,255,.16);
+      --fc-event-border-color: rgba(74,163,255,.45);
+      --fc-event-text-color: var(--text);
+      color: var(--text);
+    }
+    .fc .fc-toolbar-title{ font-size: 14px; font-weight: 700; }
+    .fc .fc-button{ border-radius: 10px; padding: 8px 10px; font-size: 12px; }
+    .fc .fc-daygrid-day-number{ color: rgba(231,238,247,.9); font-size: 12px; font-weight: 300; }
+    .fc .fc-col-header-cell-cushion{ color: rgba(138,160,183,.95); font-size: 12px; font-weight: 500; }
+    .fc .fc-timegrid-slot-label-cushion{ font-size: 11px; color: rgba(138,160,183,.95); font-weight: 300; }
+    .fc .fc-timegrid-axis-cushion{ font-size: 11px; color: rgba(138,160,183,.95); font-weight: 300; }
+    .fc .fc-event-title{ font-size: 12px; font-weight: 600; }
+    .fc .fc-event-time{ font-size: 11px; font-weight: 300; color: rgba(231,238,247,.85); }
+
+    /* ✅ 모달 */
+    .modal-backdrop{
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.55);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding: 18px;
+      z-index: 9999;
+    }
+    .modal{
       width: 100%;
-      min-height: 560px;
-      background: transparent;
+      max-width: 520px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 12px;
+    }
+    .modal h4{
+      margin: 4px 2px 10px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .modal .grid{
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .modal .grid .span2{ grid-column: span 2; }
+    .modal .actions{
+      display:flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .tag{
+      display:inline-flex;
+      gap:6px;
+      align-items:center;
+      font-size: 11px;
+      font-weight: 300;
+      color: var(--muted);
+      margin-left: 6px;
     }
 
-    .fc { font-size: 13px; font-weight: 300; }
-    .fc .fc-toolbar-title { font-size: 15px; font-weight: 600; }
-    .fc .fc-button {
-      border-radius: 10px !important;
-      border: 1px solid var(--line) !important;
-      background: rgba(255,255,255,.06) !important;
-      color: var(--text) !important;
-      box-shadow: none !important;
-      font-weight: 600 !important;
-    }
-    .fc .fc-button:hover { background: rgba(255,255,255,.10) !important; }
-    .fc-theme-standard td, .fc-theme-standard th { border-color: rgba(255,255,255,.06); }
-    .fc .fc-scrollgrid, .fc .fc-scrollgrid-section > * { border-color: rgba(255,255,255,.06); }
-
-    .ev-row {
-      display: inline-flex;
-      gap: 6px;
-      align-items: baseline;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 100%;
-    }
-    .ev-title { overflow: hidden; text-overflow: ellipsis; }
-    .ev-time { opacity: .75; flex: 0 0 auto; }
-
+    /* 모바일 최적화 */
     @media (max-width: 480px) {
-      .wrap { padding: 10px 10px 16px; }
+      .wrap { padding: 10px 10px 14px; }
+      .card { padding: 10px; border-radius: 14px; }
       .chat-input-row { grid-template-columns: 76px 1fr 66px; }
       .chat-box { height: 200px; }
       #calendar { min-height: 620px; }
       .fc .fc-toolbar { flex-wrap: wrap; gap: 6px; }
       .modal .grid { grid-template-columns: 1fr; }
     }
-
-    /* ✅ 모달 */
-    .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,.55);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 14px;
-      z-index: 9999;
-      pointer-events: auto;
-    }
-    .modal {
-      width: 100%;
-      max-width: 520px;
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 12px;
-      pointer-events: auto; /* ✅ 저장 버튼 탭 무시되는 현상 방지 */
-    }
-    .modal h4 { margin: 4px 2px 10px; font-size: 14px; font-weight: 600; }
-    .modal .grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-    .modal .row { display: grid; gap: 6px; margin-bottom: 8px; }
-    .modal label { color: var(--muted); font-size: 11px; font-weight: 300; }
-    .modal textarea { min-height: 88px; resize: none; }
-    .modal .actions {
-      display: flex;
-      gap: 8px;
-      justify-content: flex-end;
-      margin-top: 10px;
-    }
   </style>
 </head>
 
 <body>
   <div class="wrap">
-    <div class="rate-bar">
-      <div class="label">중국(CNY) 조정 환율</div>
-      <div class="val">{{ exchange_rate if exchange_rate else "-" }}</div>
+    <div class="header">
+      <div>
+        <h1>키워드 매니저</h1>
+        <div class="sub">Flask + Render + Supabase(Postgres)</div>
+      </div>
+      <div class="sub" id="statusText"></div>
     </div>
 
-    <div class="section">
-      <div class="section-title">
+    <div class="grid">
+      <!-- ✅ 채팅 -->
+      <div class="card">
+        <div class="section-title">
         <h3>채팅</h3>
       </div>
 
-      <div class="chat-box">
-        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-box" id="chatBox" aria-label="채팅 로그"></div>
 
         <div class="chat-input-row">
-          <input id="chatSender" type="text" placeholder="이름" value="나나" autocomplete="off" inputmode="text">
-          <input id="chatInput" type="text" placeholder="메시지 입력..." autocomplete="off" inputmode="text">
-          <button class="primary" id="sendBtn" type="button">전송</button>
+          <input id="chatSender" placeholder="이름" maxlength="20" value="허니걸">
+          <input id="chatInput" placeholder="메시지 입력" maxlength="500">
+          <button id="chatSendBtn" type="button">전송</button>
         </div>
       </div>
-    </div>
 
-    <div class="section">
+      <!-- ✅ 메모 -->
+      <div class="card">
       <div class="section-title">
         <h3>메모</h3>
         <button class="mini" id="refreshMemosBtn" type="button">새로고침</button>
       </div>
 
-      <form method="POST" class="memo-row">
-        <input type="text" name="memo_keyword" placeholder="메모 추가..." autocomplete="off" inputmode="text">
-        <button class="primary" type="submit" name="action" value="add_memo">추가</button>
-      </form>
-
-      <div class="memo-list">
-        {% for m in memo_list %}
-          <div class="chip">
-            <span>{{ m }}</span>
-            <form method="POST">
-              <input type="hidden" name="memo_keyword" value="{{ m }}">
-              <button class="danger" type="submit" name="action" value="delete_memo">삭제</button>
-            </form>
+        <form class="memo-form" id="memoForm" method="post" action="/">
+          <textarea name="memo_text" id="memoText" placeholder="메모를 입력하세요"></textarea>
+          <div class="row" style="margin-top: 8px;">
+            <button type="submit">메모 저장</button>
           </div>
-        {% endfor %}
-      </div>
-    </div>
+        </form>
 
-    <div class="calendar-wrap">
+        <div class="memo-list" id="memoList">
+          <!-- 서버 렌더링 메모 목록 -->
+          {% for m in memos %}
+          <div class="memo-item" data-id="{{ m.id }}">
+            <div class="memo-top">
+              <div class="memo-time">{{ m.created_at }}</div>
+              <div class="memo-actions">
+                <button class="mini btn-ghost" type="button" onclick="editMemo({{ m.id }})">수정</button>
+                <button class="mini btn-danger" type="button" onclick="deleteMemo({{ m.id }})">삭제</button>
+              </div>
+            </div>
+            <div class="memo-body" id="memoBody{{ m.id }}">{{ m.text }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- ✅ 캘린더 -->
+      <div class="card">
       <div class="section-title" style="margin: 6px 2px 10px;">
         <h3>캘린더</h3>
         <button class="mini" id="refreshCalendarBtn" type="button">새로고침</button>
       </div>
-      <div id="calendar"></div>
+
+        <div id="calendar"></div>
+      </div>
     </div>
   </div>
 
-  <div id="modalBackdrop" class="modal-backdrop">
+  <!-- ✅ 일정 모달 -->
+  <div class="modal-backdrop" id="eventModal">
     <div class="modal">
-      <h4 id="modalTitle">일정 추가</h4>
+      <h4 id="modalTitle">일정</h4>
+      <form id="eventForm">
+        <div class="grid">
+          <div class="span2">
+            <input id="evTitle" placeholder="제목" maxlength="200" required>
+          </div>
 
-      <div class="row">
-        <label>제목</label>
-        <input id="evTitle" type="text" placeholder="예: 미팅 / 발주 / 상담" autocomplete="off" inputmode="text">
-      </div>
+          <div>
+            <label class="tag">시작</label>
+            <input id="evStart" type="datetime-local" required>
+          </div>
 
-      <div class="grid">
-        <div class="row">
-          <label>시작</label>
-          <input id="evStart" type="text" placeholder="YYYY-MM-DD 또는 YYYY-MM-DDTHH:mm" autocomplete="off" inputmode="text">
+          <div>
+            <label class="tag">끝(선택)</label>
+            <input id="evEnd" type="datetime-local">
+          </div>
+
+          <div class="span2">
+            <label class="tag">메모(선택)</label>
+            <textarea id="evMemo" placeholder="메모"></textarea>
+          </div>
+
+          <div class="span2">
+            <label class="tag">
+              <input id="evAllDay" type="checkbox" style="width:auto; margin-right:6px;">
+              종일
+            </label>
+          </div>
         </div>
-        <div class="row">
-          <label>끝(선택)</label>
-          <input id="evEnd" type="text" placeholder="YYYY-MM-DD 또는 YYYY-MM-DDTHH:mm" autocomplete="off" inputmode="text">
+
+        <div class="actions">
+          <button id="evSave" type="submit">저장</button>
+          <button id="evDelete" class="btn-danger" type="button" style="display:none;">삭제</button>
+          <button id="evCancel" class="btn-ghost" type="button">닫기</button>
         </div>
-      </div>
-
-      <div class="row">
-        <label>메모(선택)</label>
-        <textarea id="evMemo" placeholder="내용/메모"></textarea>
-      </div>
-
-      <div class="actions">
-        <button id="evDelete" class="danger" type="button" style="display:none;">삭제</button>
-        <button id="evCancel" type="button">취소</button>
-        <button id="evSave" class="primary" type="button">저장</button>
-      </div>
+      </form>
     </div>
   </div>
 
   <script>
+    // ✅ 공통 fetch helpers
     async function jget(url) {
-      const r = await fetch(url, { cache: "no-store" });
+      const r = await fetch(url, { credentials: "include" });
       return await r.json();
     }
-    async function jpost(url, body) {
+    async function jpost(url, bodyObj) {
       const r = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify(bodyObj),
+        credentials: "include",
       });
       return await r.json();
     }
-    async function jput(url, body) {
+    async function jput(url, bodyObj) {
       const r = await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify(bodyObj),
+        credentials: "include",
       });
       return await r.json();
     }
     async function jdel(url) {
-      const r = await fetch(url, { method: "DELETE" });
+      const r = await fetch(url, {
+        method: "DELETE",
+        credentials: "include",
+      });
       return await r.json();
     }
 
+    // ✅ 상태 표시
+    const statusText = document.getElementById("statusText");
+    function setStatus(msg) { if(statusText) statusText.textContent = msg || ""; }
+
     // =========================
-    // ✅ 채팅 (늦게 뜨는 문제 개선)
-    // - 폴링 2초 -> 0.7초
-    // - send 성공 시 즉시 append
+    // ✅ 채팅
     // =========================
-    let lastChatId = 0;
-    const chatBox = document.getElementById("chatMessages");
+    const CHAT_ROOM = "main";
+    const chatBox = document.getElementById("chatBox");
     const chatInput = document.getElementById("chatInput");
     const chatSender = document.getElementById("chatSender");
-    const sendBtn = document.getElementById("sendBtn");
-    const CHAT_ROOM = "main";
+    const chatSendBtn = document.getElementById("chatSendBtn");
 
-    function escapeHtml(s) {
-      return (s || "").replace(/[&<>"']/g, (c) => ({
-        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-      }[c]));
+    let lastChatId = 0;
+
+    function escapeHtml(s){
+      return (s||"")
+        .replaceAll("&","&amp;")
+        .replaceAll("<","&lt;")
+        .replaceAll(">","&gt;")
+        .replaceAll('"',"&quot;")
+        .replaceAll("'","&#039;");
     }
 
-    function appendMsg(m) {
+    function appendMsg(m){
       const wrap = document.createElement("div");
-      wrap.className = "msg";
+      const isMe = (m.sender || "").trim() === (chatSender.value || "").trim();
+      wrap.className = "msg" + (isMe ? " me" : "");
 
       const bubble = document.createElement("div");
       bubble.className = "bubble";
-      bubble.innerHTML = `<b>${escapeHtml(m.sender || "익명")}</b><div style="height:6px"></div>${escapeHtml(m.message)}`;
 
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = m.created_at || "";
+      meta.textContent = `${m.sender || "익명"} · ${m.created_at || ""}`;
 
-      const col = document.createElement("div");
-      col.appendChild(bubble);
-      col.appendChild(meta);
+      const text = document.createElement("div");
+      text.className = "text";
+      text.innerHTML = escapeHtml(m.message || "");
 
-      wrap.appendChild(col);
+      bubble.appendChild(meta);
+      bubble.appendChild(text);
+      wrap.appendChild(bubble);
       chatBox.appendChild(wrap);
+
       chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    async function loadChatInit(){
+      try{
+        const data = await jget(`/api/chat/messages?room=${encodeURIComponent(CHAT_ROOM)}&after_id=0`);
+        if (data && data.ok && Array.isArray(data.messages)) {
+          chatBox.innerHTML = "";
+          for (const m of data.messages) {
+            appendMsg(m);
+            lastChatId = Math.max(lastChatId, m.id);
+          }
+        }
+      }catch(e){}
     }
 
     async function pollChatOnce() {
@@ -487,98 +558,238 @@
       const message = (chatInput.value || "").trim();
       if (!message) return;
 
-      sendBtn.disabled = true;
-      chatInput.disabled = true;
-
-      try {
-        chatInput.value = "";
-        const res = await jpost("/api/chat/send", { room: CHAT_ROOM, sender, message });
-
-        // ✅ 서버가 id/created_at을 주면, 폴링 기다리지 말고 즉시 추가
-        if (res && res.ok) {
-          appendMsg({ id: res.id, sender, message, created_at: res.created_at || "" });
-          lastChatId = Math.max(lastChatId, res.id || lastChatId);
-        } else {
-          // 실패하면 한 번 더 폴링
+      chatSendBtn.disabled = true;
+      try{
+        const data = await jpost(`/api/chat/messages`, { room: CHAT_ROOM, sender, message });
+        if (data && data.ok) {
+          chatInput.value = "";
           await pollChatOnce();
         }
-      } catch (e) {
-        try { await pollChatOnce(); } catch (e2) {}
-      } finally {
-        sendBtn.disabled = false;
-        chatInput.disabled = false;
-        chatInput.focus();
-      }
+      }catch(e){}
+      chatSendBtn.disabled = false;
+      chatInput.focus();
     }
 
-    sendBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); sendChat(); });
+    chatSendBtn.addEventListener("click", sendChat);
     chatInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); sendChat(); }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        sendChat();
+      }
     });
 
     // =========================
-    // ✅ 캘린더 + 모달 (저장 버튼 안눌림 개선)
-    // - 버튼 type=button
-    // - 클릭시 stopPropagation
+    // ✅ 메모 (서버 렌더링 + API 수정/삭제)
     // =========================
-    const modalBackdrop = document.getElementById("modalBackdrop");
+    async function deleteMemo(id){
+      if(!confirm("이 메모를 삭제할까요?")) return;
+      try{
+        const data = await jdel(`/api/memos/${id}`);
+        if(data && data.ok){
+          const el = document.querySelector(`.memo-item[data-id="${id}"]`);
+          if(el) el.remove();
+        }
+      }catch(e){}
+    }
+
+    async function editMemo(id){
+      const body = document.getElementById("memoBody" + id);
+      if(!body) return;
+      const current = body.textContent || "";
+      const next = prompt("메모 수정", current);
+      if(next === null) return;
+
+      try{
+        const data = await jput(`/api/memos/${id}`, { text: next });
+        if(data && data.ok){
+          body.textContent = next;
+        }
+      }catch(e){}
+    }
+
+    // =========================
+    // ✅ 캘린더
+    // =========================
+    let calendar = null;
+
+    const modal = document.getElementById("eventModal");
     const modalTitle = document.getElementById("modalTitle");
+    const evForm = document.getElementById("eventForm");
     const evTitle = document.getElementById("evTitle");
     const evStart = document.getElementById("evStart");
     const evEnd = document.getElementById("evEnd");
     const evMemo = document.getElementById("evMemo");
+    const evAllDay = document.getElementById("evAllDay");
     const evSave = document.getElementById("evSave");
-    const evCancel = document.getElementById("evCancel");
     const evDelete = document.getElementById("evDelete");
+    const evCancel = document.getElementById("evCancel");
 
     let currentEventId = null;
-    let calendar = null;
 
-    function openModal(mode, payload) {
-      currentEventId = payload?.id ?? null;
+    function openModal(mode, info){
+      modal.style.display = "flex";
 
-      modalTitle.textContent = mode === "edit" ? "일정 수정" : "일정 추가";
-      evDelete.style.display = mode === "edit" ? "inline-flex" : "none";
+      if(mode === "create"){
+        currentEventId = null;
+        modalTitle.textContent = "일정 추가";
+        evTitle.value = "";
+        evMemo.value = "";
+        evAllDay.checked = false;
 
-      evTitle.value = payload?.title || "";
-      evStart.value = payload?.start || "";
-      evEnd.value = payload?.end || "";
-      evMemo.value = payload?.memo || "";
+        evStart.value = info.startStr?.slice(0,16) || "";
+        evEnd.value = info.endStr?.slice(0,16) || "";
 
-      modalBackdrop.style.display = "flex";
+        evDelete.style.display = "none";
+      }else{
+        currentEventId = info.id;
+        modalTitle.textContent = "일정 수정";
+        evTitle.value = info.title || "";
+        evMemo.value = info.extendedProps?.memo || "";
+        evAllDay.checked = !!info.allDay;
+
+        const s = info.start ? toLocalInputValue(info.start) : "";
+        const e = info.end ? toLocalInputValue(info.end) : "";
+        evStart.value = s;
+        evEnd.value = e;
+
+        evDelete.style.display = "inline-block";
+      }
     }
 
-    function closeModal() {
-      modalBackdrop.style.display = "none";
-      currentEventId = null;
+    function closeModal(){
+      modal.style.display = "none";
     }
 
-    evCancel.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); closeModal(); });
-    modalBackdrop.addEventListener("click", (e) => {
-      if (e.target === modalBackdrop) closeModal();
-    });
+    function toLocalInputValue(dateObj){
+      const d = new Date(dateObj);
+      const pad = (n)=> String(n).padStart(2,"0");
+      const yyyy = d.getFullYear();
+      const mm = pad(d.getMonth()+1);
+      const dd = pad(d.getDate());
+      const hh = pad(d.getHours());
+      const mi = pad(d.getMinutes());
+      return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+    }
 
-    evSave.addEventListener("click", async (e) => {
+    function initCalendar(){
+      const el = document.getElementById("calendar");
+      calendar = new FullCalendar.Calendar(el, {
+        initialView: "timeGridWeek",
+        height: "auto",
+        expandRows: true,
+        nowIndicator: true,
+        locale: "ko",
+        firstDay: 1,
+        selectable: true,
+        editable: true,
+        dayMaxEvents: true,
+
+        timeZone: "Asia/Seoul",
+      displayEventTime: false,
+
+        headerToolbar: {
+          left: "prev,next today",
+          center: "title",
+          right: "dayGridMonth,timeGridWeek,timeGridDay"
+        },
+
+        events: async (fetchInfo, success, failure) => {
+          try{
+            const data = await jget("/api/events");
+            if(data && data.ok && Array.isArray(data.events)){
+              const out = data.events.map(e => ({
+                id: e.id,
+                title: e.title || "",
+                start: e.start,
+                end: e.end,
+                allDay: !!e.all_day,
+                extendedProps: { memo: e.memo || "" }
+              }));
+              success(out);
+            }else{
+              success([]);
+            }
+          }catch(err){
+            failure(err);
+          }
+        },
+
+        eventContent: function(arg) {
+      const wrap = document.createElement("div");
+      wrap.className = "ev";
+
+      const title = document.createElement("div");
+      title.className = "ev-title";
+      title.textContent = arg.event.title || "";
+      wrap.appendChild(title);
+
+      return { domNodes: [wrap] };
+    },
+
+        select: (info) => {
+          openModal("create", info);
+        },
+
+        eventClick: (info) => {
+          openModal("edit", info.event);
+        },
+
+        eventDrop: async (info) => {
+          try{
+            await jput(`/api/events/${info.event.id}`, {
+              title: info.event.title,
+              start: info.event.start ? info.event.start.toISOString() : null,
+              end: info.event.end ? info.event.end.toISOString() : null,
+              all_day: !!info.event.allDay,
+              memo: info.event.extendedProps?.memo || ""
+            });
+          }catch(e){}
+        },
+        eventResize: async (info) => {
+          try{
+            await jput(`/api/events/${info.event.id}`, {
+              title: info.event.title,
+              start: info.event.start ? info.event.start.toISOString() : null,
+              end: info.event.end ? info.event.end.toISOString() : null,
+              all_day: !!info.event.allDay,
+              memo: info.event.extendedProps?.memo || ""
+            });
+          }catch(e){}
+        }
+      });
+
+      calendar.render();
+    }
+
+    function fetchEvents(){
+      if(calendar) calendar.refetchEvents();
+    }
+
+    evCancel.addEventListener("click", (e)=>{ e.preventDefault(); closeModal(); });
+    modal.addEventListener("click", (e)=>{ if(e.target === modal) closeModal(); });
+
+    evForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       e.stopPropagation();
 
       const title = (evTitle.value || "").trim();
-      const start = (evStart.value || "").trim();
-      const end = (evEnd.value || "").trim();
-      const memo = (evMemo.value || "").trim();
+      if(!title) return;
 
-      if (!title || !start) return;
+      const start = evStart.value ? new Date(evStart.value).toISOString() : null;
+      const end = evEnd.value ? new Date(evEnd.value).toISOString() : null;
+      const memo = (evMemo.value || "").trim();
+      const all_day = !!evAllDay.checked;
 
       evSave.disabled = true;
 
-      try {
-        if (currentEventId) {
-          await jput(`/api/events/${currentEventId}`, { title, start, end: end || null, memo });
-        } else {
-          await jpost("/api/events", { title, start, end: end || null, allDay: false, memo });
+      try{
+        if(!currentEventId){
+          await jpost("/api/events", { title, start, end, memo, all_day });
+        }else{
+          await jput(`/api/events/${currentEventId}`, { title, start, end, memo, all_day });
         }
         closeModal();
-        calendar.refetchEvents();
+        fetchEvents();
       } catch (e2) {
       } finally {
         evSave.disabled = false;
@@ -597,81 +808,21 @@
       try {
         await jdel(`/api/events/${currentEventId}`);
         closeModal();
-        calendar.refetchEvents();
-      } catch (e2) {
+        fetchEvents();
+      } catch (err) {
       } finally {
         evDelete.disabled = false;
       }
     });
 
-    async function initCalendar() {
-      const calEl = document.getElementById("calendar");
-
-      calendar = new FullCalendar.Calendar(calEl, {
-        initialView: "dayGridMonth",
-          timeZone: "Asia/Seoul",
-      displayEventTime: false,
-        height: "auto",
-        expandRows: true,
-        nowIndicator: true,
-
-        selectable: true,
-        selectMirror: true,
-        longPressDelay: 180,
-        selectLongPressDelay: 180,
-
-        events: async (info, success, failure) => {
-          try {
-            const data = await jget("/api/events");
-            success(data || []);
-          } catch (e) {
-            failure(e);
-          }
-        },
-
-        dateClick: (arg) => {
-          openModal("add", { title: "", start: arg.dateStr, end: "", memo: "" });
-        },
-
-        select: (sel) => {
-          openModal("add", { title: "", start: sel.startStr, end: sel.endStr || "", memo: "" });
-        },
-
-        eventClick: (info) => {
-          const e = info.event;
-          openModal("edit", {
-            id: e.id,
-            title: e.title,
-            start: e.startStr,
-            end: e.endStr || "",
-            memo: (e.extendedProps && e.extendedProps.memo) ? e.extendedProps.memo : ""
-          });
-        },
-
-        eventContent: (arg) => {
-          const wrap = document.createElement("span");
-          wrap.className = "ev-row";
-
-          const title = document.createElement("span");
-          title.className = "ev-title";
-          title.textContent = arg.event.title || "";
-
-          const time = document.createElement("span");
-          time.className = "ev-time";
-          time.textContent = arg.timeText ? ` ${arg.timeText}` : "";
-
-          wrap.appendChild(title);
-          if (arg.timeText) wrap.appendChild(time);
-
-          return { domNodes: [wrap] };
-        }
-      });
-
-      calendar.render();
-    }
-
-    pollChat();
-    initCalendar();
+    // =========================
+    // ✅ 초기 로드
+    // =========================
+    (async function boot(){
+      setStatus("연결 중...");
+      await loadChatInit();
+      pollChat();
+      initCalendar();
 
   const refreshMemosBtn = document.getElementById("refreshMemosBtn");
   if (refreshMemosBtn) {
@@ -684,6 +835,8 @@
       if (calendar) calendar.refetchEvents();
     });
   }
+      setStatus("");
+    })();
   </script>
 </body>
 </html>
