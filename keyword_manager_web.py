@@ -2,21 +2,15 @@ from flask import Flask, render_template, request, jsonify
 from datetime import datetime
 import pytz
 import os
+import re
 import requests
 from bs4 import BeautifulSoup
 from flask_cors import CORS
 
+# ✅ Postgres(Supabase) 연결용
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
-import threading
-
 import psycopg
-
-# ✅ psycopg3 pool (없을 수도 있으니 try)
-try:
-    from psycopg_pool import ConnectionPool
-except Exception:
-    ConnectionPool = None
-
+import threading
 
 app = Flask(__name__)
 CORS(app)
@@ -26,248 +20,193 @@ tz = pytz.timezone("Asia/Seoul")
 _DB_READY = False
 _DB_LOCK = threading.Lock()
 
-_POOL = None
+
+def _safe_mkdir(path: str) -> bool:
+    try:
+        os.makedirs(path, exist_ok=True)
+        testfile = os.path.join(path, ".write_test")
+        with open(testfile, "w", encoding="utf-8") as f:
+            f.write("ok")
+        os.remove(testfile)
+        return True
+    except Exception as e:
+        print(f"⚠️ Dir not writable: {path} ({e})")
+        return False
 
 
 # ===============================
 # ✅ DB URL (Supabase Postgres)
 # ===============================
+# ===============================
+# ✅ DB URL (한 번만 로드/출력)
+# ===============================
+_CACHED_DATABASE_URL = None
+
 def _get_database_url():
-    url = (os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URLSupabase") or "").strip()
+    global _CACHED_DATABASE_URL
+    if _CACHED_DATABASE_URL:
+        return _CACHED_DATABASE_URL
+
+    url = os.environ.get("DATABASE_URL")
     if not url:
-        raise RuntimeError("DATABASE_URL(또는 DATABASE_URLSupabase) 환경변수가 없습니다. Render Environment에 설정하세요.")
+        url = os.environ.get("SUPABASE_DB_URL")
+    if not url:
+        raise RuntimeError("DATABASE_URL (or SUPABASE_DB_URL) is required")
 
-    if url.startswith("postgres://"):
-        url = "postgresql://" + url[len("postgres://"):]
+    safe = url.split("@", 1)[-1] if "@" in url else url
+    print(f"✅ Using DATABASE_URL: postgresql://***@{safe}")
 
-    u = urlparse(url)
-    q = dict(parse_qsl(u.query))
-    if "sslmode" not in q:
-        q["sslmode"] = "require"
-        u = u._replace(query=urlencode(q))
-        url = urlunparse(u)
-
-    # ✅ 로그(비번 마스킹)
-    try:
-        masked = url
-        if "://" in masked and "@" in masked:
-            head, tail = masked.split("://", 1)
-            cred, rest = tail.split("@", 1)
-            if ":" in cred:
-                user, _pw = cred.split(":", 1)
-                masked = f"{head}://{user}:***@{rest}"
-        print(f"✅ Using DATABASE_URL: {masked}")
-    except Exception:
-        pass
-
+    _CACHED_DATABASE_URL = url
     return url
 
 
-# ===============================
-# ✅ DB Connection (Pool 우선)
-# ===============================
-def _init_pool_once():
-    global _POOL
-    if _POOL is not None:
-        return
-
-    if ConnectionPool is None:
-        # psycopg_pool이 없으면 풀 없이 진행
-        _POOL = False
-        return
-
-    dsn = _get_database_url()
-
-    # Render free + Supabase pooler 특성상 너무 큰 풀은 오히려 역효과
-    _POOL = ConnectionPool(
-        conninfo=dsn,
-        min_size=1,
-        max_size=4,
-        timeout=10,
-        max_lifetime=60 * 10,
-        max_idle=60 * 2,
-    )
-
-
-def db_conn():
-    """
-    사용법:
-      with db_conn() as conn:
-          with conn.cursor() as cur:
-              ...
-    """
-    _init_pool_once()
-    if _POOL is False:
-        return psycopg.connect(_get_database_url(), connect_timeout=10)
-    return _POOL.connection()
+def get_conn():
+    return psycopg.connect(_get_database_url(), connect_timeout=10)
 
 
 # ===============================
-# ✅ DB 초기화 / 마이그레이션
+# ✅ DB 초기화 (한 번만)
+# - ⚠️ end 는 postgres 예약어라 컬럼명으로 쓰면 에러남
+#   -> end_at 으로 변경
 # ===============================
 def init_db():
-    ddl = """
-    create table if not exists memos (
-        id bigserial primary key,
-        content text not null,
-        created_at timestamptz default now()
-    );
-    create unique index if not exists memos_content_uq on memos(content);
+    ddl = """create table if not exists memos (
+  id bigserial primary key,
+  content text not null,
+  created_at timestamptz not null default now()
+);
 
-    -- 레거시 events
-    create table if not exists events (
-        id bigserial primary key,
-        title text not null,
-        start_at text not null,
-        end_at text,
-        all_day integer default 0,
-        memo text,
-        created_at timestamptz default now()
-    );
+-- ✅ 채팅
+create table if not exists chat_messages (
+  id bigserial primary key,
+  room text not null,
+  sender text not null,
+  message text not null,
+  created_at timestamptz not null default now()
+);
 
-    -- ✅ 캘린더 메인
-    create table if not exists calendar_events (
-        id bigserial primary key,
-        title text not null,
-        start_time timestamptz not null,
-        end_time timestamptz,
-        all_day integer default 0,
-        memo text,
-        created_at timestamptz default now()
-    );
+-- ✅ (레거시) events: 예전 텍스트 기반 (남겨둠)
+create table if not exists events (
+  id bigserial primary key,
+  title text not null,
+  start_at text,
+  end_at text,
+  all_day int4 not null default 0,
+  memo text,
+  created_at timestamptz not null default now()
+);
 
-    create table if not exists chat_messages (
-        id bigserial primary key,
-        room text default 'main',
-        sender text,
-        message text not null,
-        created_at timestamptz default now()
-    );
-    create index if not exists chat_room_id_idx on chat_messages(room, id);
-    """
-    with db_conn() as conn:
+-- ✅ calendar_events: FullCalendar용 (timestamptz)
+create table if not exists calendar_events (
+  id bigserial primary key,
+  title text not null,
+  start_time timestamptz,
+  end_time timestamptz,
+  created_at timestamptz not null default now(),
+  all_day int4 not null default 0,
+  memo text
+);"""
+    with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(ddl)
         conn.commit()
 
 
-def migrate_calendar_events_table():
-    with db_conn() as conn:
+# ===============================
+# ✅ Calendar helpers (KST 기준)
+# ===============================
+def _parse_dt(val):
+    """val: 'YYYY-MM-DD' 또는 ISO 문자열. None 가능."""
+    if val is None:
+        return None
+    if isinstance(val, str):
+        s = val.strip()
+        if not s:
+            return None
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+            y, mo, d = map(int, s.split("-"))
+            return datetime(y, mo, d, 0, 0, 0, tzinfo=tz)
+        try:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=tz)
+            return dt.astimezone(tz)
+        except Exception:
+            return None
+    return None
+
+def _dt_to_fullcalendar_start(dt, all_day):
+    if not dt:
+        return None
+    dt_kst = dt.astimezone(tz) if dt.tzinfo else dt.replace(tzinfo=tz)
+    if all_day:
+        return dt_kst.date().isoformat()
+    return dt_kst.isoformat()
+
+def _ensure_calendar_events_columns(cur):
+    """배포 중 스키마가 꼬였을 때를 대비해 컬럼을 보정."""
+    cur.execute("""
+        select 1
+        from information_schema.columns
+        where table_schema='public' and table_name='calendar_events' and column_name='all_day'
+    """)
+    if cur.fetchone() is None:
+        cur.execute("alter table calendar_events add column all_day int4 not null default 0")
+
+    cur.execute("""
+        select 1
+        from information_schema.columns
+        where table_schema='public' and table_name='calendar_events' and column_name='memo'
+    """)
+    if cur.fetchone() is None:
+        cur.execute("alter table calendar_events add column memo text")
+
+    cur.execute("""
+        select 1
+        from information_schema.columns
+        where table_schema='public' and table_name='calendar_events' and column_name='created_at'
+    """)
+    if cur.fetchone() is None:
+        cur.execute("alter table calendar_events add column created_at timestamptz not null default now()")
+
+def migrate_events_to_calendar_events_once():
+    """레거시 events -> calendar_events (calendar_events가 비어있을 때만 1회)."""
+    with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                select column_name
-                from information_schema.columns
-                where table_schema='public' and table_name='calendar_events'
-                """
-            )
-            cols = {r[0] for r in cur.fetchall()}
-            if not cols:
+            _ensure_calendar_events_columns(cur)
+
+            cur.execute("select count(*) from calendar_events")
+            cal_cnt = cur.fetchone()[0] or 0
+            if cal_cnt > 0:
                 conn.commit()
                 return
 
-            # ✅ 이번 에러 원인 방지: 없으면 즉시 추가
-            if "all_day" not in cols:
-                cur.execute("alter table calendar_events add column if not exists all_day integer default 0")
-            if "memo" not in cols:
-                cur.execute("alter table calendar_events add column if not exists memo text")
-            if "created_at" not in cols:
-                cur.execute("alter table calendar_events add column if not exists created_at timestamptz default now()")
+            cur.execute("select id, title, start_at, end_at, all_day, memo, created_at from events order by id asc")
+            rows = cur.fetchall()
+            if not rows:
+                conn.commit()
+                return
+
+            for (_id, title, start_at, end_at, all_day, memo, created_at) in rows:
+                st = _parse_dt(start_at)
+                et = _parse_dt(end_at) if end_at else None
+                cur.execute(
+                    """
+                    insert into calendar_events (title, start_time, end_time, all_day, memo, created_at)
+                    values (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (title or "", st, et, int(all_day or 0), memo, created_at or datetime.now(tz)),
+                )
         conn.commit()
 
-
-def _parse_legacy_text_dt(s: str):
-    if not s:
-        return None
-    s = str(s).strip()
-    if not s:
-        return None
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    if len(s) == 10 and s.count("-") == 2:
-        dt = datetime.fromisoformat(s + "T00:00:00")
-        return tz.localize(dt)
-    try:
-        dt = datetime.fromisoformat(s)
-        if dt.tzinfo is None:
-            return tz.localize(dt)
-        return dt
-    except Exception:
-        return None
-
-
-def migrate_events_to_calendar_events_once():
-    """
-    ✅ 레거시 events -> calendar_events 이관 (1회)
-    - 이관 실패는 서비스 전체를 죽이면 안됨 (로그만 찍고 무시)
-    """
-    try:
-        with db_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("select count(*) from calendar_events")
-                cal_cnt = cur.fetchone()[0]
-                cur.execute("select count(*) from events")
-                old_cnt = cur.fetchone()[0]
-                if cal_cnt > 0 or old_cnt == 0:
-                    conn.commit()
-                    return
-
-                cur.execute("select title, start_at, end_at, all_day, memo, created_at from events order by id asc")
-                rows = cur.fetchall()
-
-                inserted = 0
-                for title, start_at, end_at, all_day, memo, created_at in rows:
-                    st = _parse_legacy_text_dt(start_at)
-                    et = _parse_legacy_text_dt(end_at) if end_at else None
-                    if not title or not st:
-                        continue
-
-                    cur.execute(
-                        """
-                        insert into calendar_events (title, start_time, end_time, all_day, memo, created_at)
-                        values (%s, %s, %s, %s, %s, %s)
-                        """,
-                        (title, st, et, int(all_day or 0), memo, created_at),
-                    )
-                    inserted += 1
-
-            conn.commit()
-            if inserted:
-                print(f"✅ migrated legacy events -> calendar_events: {inserted} rows")
-    except Exception as e:
-        print("⚠️ migrate_events_to_calendar_events_once failed:", e)
-
-
 def ensure_db():
-    """
-    ✅ 중요:
-    - 여기서 실패하면 polling 때문에 매 요청마다 다시 실행되어 서버가 점점 느려짐
-    - 그래서 '필수 init_db'만 실패하면 죽고,
-      '옵션 migrate'는 실패해도 _DB_READY는 True로 만들어서 서비스는 정상 동작하게 함
-    """
     global _DB_READY
     if _DB_READY:
         return
-
     with _DB_LOCK:
         if _DB_READY:
             return
-
-        # 1) 필수: 테이블 생성
         init_db()
-
-        # 2) 옵션: 컬럼 보정 / 이관 (실패해도 서비스는 살아야 함)
-        try:
-            migrate_calendar_events_table()
-        except Exception as e:
-            print("⚠️ migrate_calendar_events_table failed:", e)
-
-        try:
-            migrate_events_to_calendar_events_once()
-        except Exception as e:
-            print("⚠️ migrate_events_to_calendar_events_once failed:", e)
-
-        # ✅ 여기서 True로 고정 (다시 안 돌게)
         _DB_READY = True
 
 
@@ -308,17 +247,75 @@ def get_adjusted_exchange_rate():
 
 
 # ===============================
-# ✅ ROUTES
+# ✅ Health (UptimeRobot)
 # ===============================
 @app.route("/health", methods=["GET", "HEAD"])
 def health():
     return ("", 200)
 
 
+# ===============================
+# ✅ 메인
+# - Render가 / 에 HEAD를 때리는 경우가 있어서,
+#   HEAD는 DB 안건드리고 200만 반환
+# ===============================
 @app.route("/", methods=["GET", "POST", "HEAD"])
 def index():
     if request.method == "HEAD":
         return ("", 200)
+
+
+# ===============================
+# ✅ 메모 API (실시간 동기화용)
+# ===============================
+@app.route("/api/memos", methods=["GET"])
+def api_get_memos():
+    ensure_db()
+    after_id = request.args.get("after_id")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if after_id and str(after_id).isdigit():
+                cur.execute(
+                    "select id, content, created_at from memos where id > %s order by id asc",
+                    (int(after_id),),
+                )
+            else:
+                cur.execute("select id, content, created_at from memos order by id asc")
+            rows = cur.fetchall()
+
+    out = [{"id": r[0], "content": r[1], "created_at": r[2].isoformat() if r[2] else None} for r in rows]
+    return jsonify(out)
+
+
+@app.route("/api/memos", methods=["POST"])
+def api_create_memo():
+    ensure_db()
+    data = request.get_json() or {}
+    content = (data.get("content") or "").strip()
+    if not content:
+        return jsonify({"ok": False, "error": "empty"}), 400
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "insert into memos (content, created_at) values (%s, %s) returning id",
+                (content, datetime.now(tz)),
+            )
+            memo_id = cur.fetchone()[0]
+        conn.commit()
+
+    return jsonify({"ok": True, "id": memo_id})
+
+
+@app.route("/api/memos/<int:memo_id>", methods=["DELETE"])
+def api_delete_memo(memo_id):
+    ensure_db()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("delete from memos where id=%s", (memo_id,))
+        conn.commit()
+    return jsonify({"ok": True})
+
 
     ensure_db()
 
@@ -327,7 +324,7 @@ def index():
         memo_keyword = request.form.get("memo_keyword", "").strip()
 
         if action == "add_memo" and memo_keyword:
-            with db_conn() as conn:
+            with get_conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         "insert into memos (content) values (%s) on conflict (content) do nothing",
@@ -336,12 +333,12 @@ def index():
                 conn.commit()
 
         if action == "delete_memo" and memo_keyword:
-            with db_conn() as conn:
+            with get_conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute("delete from memos where content=%s", (memo_keyword,))
                 conn.commit()
 
-    with db_conn() as conn:
+    with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("select content from memos order by content")
             memo_list = [r[0] for r in cur.fetchall()]
@@ -354,193 +351,188 @@ def index():
 
 
 # ===============================
-# ✅ 메모 API
-# ===============================
-@app.route("/api/memos", methods=["GET"])
-def api_get_memos():
-    ensure_db()
-    with db_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("select content from memos order by content")
-            memo_list = [r[0] for r in cur.fetchall()]
-    return jsonify({"ok": True, "memos": memo_list})
-
-
-@app.route("/api/memos", methods=["POST"])
-def api_add_memo():
-    ensure_db()
-    try:
-        data = request.get_json() or {}
-        content = (data.get("content") or "").strip()
-        if not content:
-            return jsonify({"ok": False, "error": "empty_content"}), 400
-
-        with db_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "insert into memos (content) values (%s) on conflict (content) do nothing",
-                    (content,),
-                )
-            conn.commit()
-
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/api/memos", methods=["DELETE"])
-def api_delete_memo():
-    ensure_db()
-    try:
-        data = request.get_json() or {}
-        content = (data.get("content") or "").strip()
-        if not content:
-            return jsonify({"ok": False, "error": "empty_content"}), 400
-
-        with db_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("delete from memos where content=%s", (content,))
-            conn.commit()
-
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-# ===============================
-# ✅ 캘린더 API (calendar_events)
+# ✅ 캘린더 API
 # ===============================
 @app.route("/api/events", methods=["GET"])
 def get_events():
     ensure_db()
-    with db_conn() as conn:
+
+    with get_conn() as conn:
         with conn.cursor() as cur:
+            _ensure_calendar_events_columns(cur)
             cur.execute(
-                "select id, title, start_time, end_time, coalesce(all_day,0), memo from calendar_events order by id asc"
+                """
+                select id, title, start_time, end_time, all_day, memo
+                from calendar_events
+                order by id asc
+                """
             )
             rows = cur.fetchall()
 
-    return jsonify(
-        [
+    out = []
+    for (eid, title, st, et, all_day, memo) in rows:
+        out.append(
             {
-                "id": r[0],
-                "title": r[1],
-                "start": r[2].isoformat() if r[2] else None,
-                "end": r[3].isoformat() if r[3] else None,
-                "allDay": bool(r[4]),
-                "extendedProps": {"memo": r[5] or ""},
+                "id": eid,
+                "title": title or "",
+                "start": _dt_to_fullcalendar_start(st, bool(all_day)),
+                "end": _dt_to_fullcalendar_start(et, bool(all_day)) if et else None,
+                "allDay": bool(all_day),
+                "memo": memo or "",
             }
-            for r in rows
-        ]
-    )
-
-
-def _parse_incoming_dt(s: str):
-    if not s:
-        return None
-    s = str(s).strip()
-    if not s:
-        return None
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    if len(s) == 10 and s.count("-") == 2:
-        dt = datetime.fromisoformat(s + "T00:00:00")
-        return tz.localize(dt)
-    dt = datetime.fromisoformat(s)
-    if dt.tzinfo is None:
-        return tz.localize(dt)
-    return dt
+        )
+    return jsonify(out)
 
 
 @app.route("/api/events", methods=["POST"])
-def add_event():
+def create_event():
     ensure_db()
-    try:
-        data = request.get_json() or {}
-        title = (data.get("title") or "").strip()
-        start_raw = (data.get("start") or "").strip()
-        if not title or not start_raw:
-            return jsonify({"ok": False, "error": "title/start required"}), 400
+    data = request.get_json() or {}
 
-        st = _parse_incoming_dt(start_raw)
-        et = _parse_incoming_dt(data.get("end")) if data.get("end") else None
-        memo = (data.get("memo") or "").strip()
-        all_day = 1 if data.get("allDay") else 0
+    title = (data.get("title") or "").strip()
+    st = _parse_dt(data.get("start"))
+    et = _parse_dt(data.get("end")) if data.get("end") else None
+    all_day = 1 if data.get("allDay") else 0
+    memo = data.get("memo", "")
 
-        with db_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    insert into calendar_events (title, start_time, end_time, all_day, memo, created_at)
-                    values (%s, %s, %s, %s, %s, %s)
-                    returning id
-                    """,
-                    (title, st, et, all_day, memo, datetime.now(tz)),
-                )
-                event_id = cur.fetchone()[0]
-            conn.commit()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _ensure_calendar_events_columns(cur)
+            cur.execute(
+                """
+                insert into calendar_events (title, start_time, end_time, all_day, memo, created_at)
+                values (%s, %s, %s, %s, %s, %s)
+                returning id
+                """,
+                (title, st, et, all_day, memo, datetime.now(tz)),
+            )
+            event_id = cur.fetchone()[0]
+        conn.commit()
 
-        return jsonify({"ok": True, "id": event_id})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({"ok": True, "id": event_id})
 
 
 @app.route("/api/events/<int:event_id>", methods=["PUT"])
 def update_event(event_id):
     ensure_db()
-    try:
-        data = request.get_json() or {}
+    data = request.get_json() or {}
 
-        fields = []
-        values = []
+    fields = []
+    values = []
 
-        if "title" in data:
-            fields.append("title=%s")
-            values.append((data.get("title") or "").strip())
+    if "title" in data:
+        fields.append("title=%s")
+        values.append((data.get("title") or "").strip())
 
-        if "start" in data:
-            fields.append("start_time=%s")
-            values.append(_parse_incoming_dt(data.get("start")))
+    if "start" in data:
+        fields.append("start_time=%s")
+        values.append(_parse_dt(data.get("start")))
 
-        if "end" in data:
-            endv = data.get("end")
-            fields.append("end_time=%s")
-            values.append(_parse_incoming_dt(endv) if endv else None)
+    if "end" in data:
+        fields.append("end_time=%s")
+        values.append(_parse_dt(data.get("end")) if data.get("end") else None)
 
-        if "memo" in data:
-            fields.append("memo=%s")
-            values.append((data.get("memo") or "").strip())
+    if "allDay" in data:
+        fields.append("all_day=%s")
+        values.append(1 if data.get("allDay") else 0)
 
-        if "allDay" in data:
-            fields.append("all_day=%s")
-            values.append(1 if data.get("allDay") else 0)
+    if "memo" in data:
+        fields.append("memo=%s")
+        values.append(data.get("memo") or "")
 
-        if not fields:
-            return jsonify({"ok": True})
-
-        values.append(event_id)
-
-        with db_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(f"update calendar_events set {', '.join(fields)} where id=%s", values)
-            conn.commit()
-
+    if not fields:
         return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+
+    values.append(event_id)
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _ensure_calendar_events_columns(cur)
+            cur.execute(
+                f"update calendar_events set {', '.join(fields)} where id=%s",
+                values,
+            )
+        conn.commit()
+
+    return jsonify({"ok": True})
 
 
 @app.route("/api/events/<int:event_id>", methods=["DELETE"])
 def delete_event(event_id):
     ensure_db()
-    try:
-        with db_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("delete from calendar_events where id=%s", (event_id,))
-            conn.commit()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("delete from calendar_events where id=%s", (event_id,))
+        conn.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/events", methods=["POST"])
+def add_event():
+    ensure_db()
+    data = request.get_json() or {}
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into events (title, start_at, end_at, all_day, memo, created_at)
+                values (%s, %s, %s, %s, %s, %s)
+                returning id
+                """,
+                (
+                    data.get("title", ""),
+                    data.get("start", ""),
+                    data.get("end"),
+                    1 if data.get("allDay") else 0,
+                    data.get("memo", ""),
+                    datetime.now(tz),
+                ),
+            )
+            event_id = cur.fetchone()[0]
+        conn.commit()
+
+    return jsonify({"ok": True, "id": event_id})
+
+
+@app.route("/api/events/<int:event_id>", methods=["PUT"])
+def update_event(event_id):
+    ensure_db()
+    data = request.get_json() or {}
+
+    fields = []
+    values = []
+
+    for key, col in [("title", "title"), ("start", "start_at"), ("end", "end_at"), ("memo", "memo")]:
+        if key in data:
+            fields.append(f"{col}=%s")
+            values.append(data[key])
+
+    if "allDay" in data:
+        fields.append("all_day=%s")
+        values.append(1 if data["allDay"] else 0)
+
+    if not fields:
         return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+
+    values.append(event_id)
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"update events set {', '.join(fields)} where id=%s", values)
+        conn.commit()
+
+    return jsonify({"ok": True})
+
+
+@app.route("/api/events/<int:event_id>", methods=["DELETE"])
+def delete_event(event_id):
+    ensure_db()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("delete from events where id=%s", (event_id,))
+        conn.commit()
+    return jsonify({"ok": True})
 
 
 # ===============================
@@ -552,7 +544,7 @@ def chat_messages():
     after_id = int(request.args.get("after_id", 0))
     room = (request.args.get("room") or "main").strip() or "main"
 
-    with db_conn() as conn:
+    with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -594,7 +586,7 @@ def send_chat():
 
     now = datetime.now(tz)
 
-    with db_conn() as conn:
+    with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -607,6 +599,7 @@ def send_chat():
             msg_id = cur.fetchone()[0]
         conn.commit()
 
+    # ✅ 프론트에서 "바로 표시" 할 수 있게 created_at도 같이 반환
     return jsonify({"ok": True, "id": msg_id, "created_at": now.isoformat()})
 
 
