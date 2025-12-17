@@ -99,7 +99,7 @@ def init_db():
         id bigserial primary key,
         title text not null,
         start text not null,
-        end text,
+        end_at text,
         all_day integer default 0,
         memo text,
         created_at timestamptz default now()
