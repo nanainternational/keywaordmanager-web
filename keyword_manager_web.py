@@ -236,10 +236,24 @@ def get_events():
     )
 
 
+# ===============================
+# ✅ [섹션 A] 일정 추가 (POST) - 수정됨
+# - 성공 시 FullCalendar용 event 객체 반환
+# - 실패 시 ok:false + 400/500
+# ===============================
 @app.route("/api/events", methods=["POST"])
 def add_event():
     ensure_db()
     data = request.get_json() or {}
+
+    title = (data.get("title") or "").strip()
+    start = (data.get("start") or "").strip()
+    end = data.get("end")
+    memo = (data.get("memo") or "").strip()
+    all_day = 1 if data.get("allDay") else 0
+
+    if not title or not start:
+        return jsonify({"ok": False, "error": "title/start required"}), 400
 
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -250,18 +264,30 @@ def add_event():
                 returning id
                 """,
                 (
-                    data.get("title", ""),
-                    data.get("start", ""),
-                    data.get("end"),
-                    1 if data.get("allDay") else 0,
-                    data.get("memo", ""),
+                    title,
+                    start,
+                    end,
+                    all_day,
+                    memo,
                     datetime.now(tz),
                 ),
             )
             event_id = cur.fetchone()[0]
         conn.commit()
 
-    return jsonify({"ok": True, "id": event_id})
+    return jsonify(
+        {
+            "ok": True,
+            "event": {
+                "id": event_id,
+                "title": title,
+                "start": start,
+                "end": end,
+                "allDay": bool(all_day),
+                "extendedProps": {"memo": memo},
+            },
+        }
+    )
 
 
 @app.route("/api/events/<int:event_id>", methods=["PUT"])
