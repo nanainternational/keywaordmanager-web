@@ -1,261 +1,911 @@
 <!doctype html>
 <html lang="ko">
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<head>  <!-- ✅ 모바일 입력창 눌렀을 때 확대(줌) 방지 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 
   <title>Keyword Manager Web</title>
 
+  <!-- FullCalendar -->
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
   <style>
-    :root{
-      --bg:#0b0d10;
-      --panel:#11141a;
-      --line:rgba(255,255,255,.08);
-      --text:rgba(255,255,255,.9);
-      --muted:rgba(255,255,255,.6);
-      --blue:#4da3ff;
-      --gray:#6b7280;
-    }
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      background:var(--bg);
-      color:var(--text);
-      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",Arial,sans-serif;
-      font-size:14px;
-      font-weight:300;
-    }
-    .wrap{
-      max-width:920px;
-      margin:0 auto;
-      padding:10px;
-    }
-    .section{
-      background:var(--panel);
-      border:1px solid var(--line);
-      border-radius:14px;
-      padding:10px;
-      margin-bottom:10px;
-    }
-    .section-title{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      margin-bottom:8px;
-    }
-    h3{
-      margin:0;
-      font-size:14px;
-      font-weight:600;
+    :root {
+      --bg: #0b0d10;
+      --panel: #11141a;
+      --line: rgba(255,255,255,.08);
+      --text: rgba(255,255,255,.90);
+      --muted: rgba(255,255,255,.62);
+      --chip: rgba(255,255,255,.08);
+      --accent: #4da3ff;
+      --danger: #ff5a6a;
     }
 
-    /* =========================
-       ✅ Presence (Instagram style)
-    ========================= */
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+
+      /* ✅ 폰트 1 작게 + 얇게 */
+      font-size: 14px;
+      font-weight: 300;
+      overscroll-behavior: none;
+    }
+
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 10px 10px 16px;
+    }
+
+    /* ✅ 환율 섹션: 최소화(작게) */
+    .rate-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 7px 10px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      margin-bottom: 10px;
+      font-size: 12px;
+    }
+    .rate-bar .label { color: var(--muted); font-weight: 300; }
+    .rate-bar .val { font-weight: 600; letter-spacing: .2px; }
+
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 2px 2px 10px;
+    }
+    .section-title h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: .15px;
+    }
+    .hint { color: var(--muted); font-size: 11px; font-weight: 300; }
+
+    button.mini {
+      width: auto;
+      padding: 7px 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+
+    .mini.icon-btn{
+      width: 38px;
+      padding: 7px 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .refresh-icon{
+      display: inline-block;
+      font-size: 16px;
+      line-height: 1;
+      transform-origin: 50% 50%;
+    }
+    .spinning .refresh-icon{
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin{
+      from{ transform: rotate(0deg); }
+      to{ transform: rotate(360deg); }
+    }
+
+    /* ✅ 채팅 */
+    .chat-box {
+      height: 220px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .chat-messages {
+      flex: 1;
+      overflow: auto;
+      padding: 8px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+    }
+    .msg {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: flex-start;
+    }
+
+    .msg.me { justify-content: flex-end; }
+    .msg.me .bubble {
+      background: rgba(77,163,255,.16);
+      border-color: rgba(77,163,255,.26);
+    }
+    .msg.me .meta { text-align: right; }
+
+    .bubble {
+      max-width: 80%;
+      padding: 9px 11px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.07);
+      border: 1px solid var(--line);
+      line-height: 1.25;
+      font-size: 13px;
+      font-weight: 300;
+      word-break: break-word;
+    }
+    .bubble b { font-weight: 600; }
+    .meta {
+      color: var(--muted);
+      font-size: 10px;
+      margin-top: 3px;
+      font-weight: 300;
+    }
+
+    .chat-input-row {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 82px 1fr 70px;
+      gap: 8px;
+      align-items: center;
+    }
+    .chat-input-row > * { min-width: 0; }
+
+    input, textarea, button {
+      font: inherit;
+      color: var(--text);
+      outline: none;
+    }
+
+    input[type="text"], textarea {
+      font-size: 16px;
+      font-weight: 300;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+
+    button {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.06);
+      border-radius: 12px;
+      padding: 10px 10px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+      touch-action: manipulation; /* ✅ 모바일 탭 반응 개선 */
+    }
+    button.primary {
+      background: rgba(77,163,255,.18);
+      border-color: rgba(77,163,255,.28);
+    }
+    button.danger {
+      background: rgba(255,90,106,.16);
+      border-color: rgba(255,90,106,.26);
+    }
+    button:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    /* ✅ 메모 */
+    .memo-row {
+      display: grid;
+      grid-template-columns: 1fr 92px;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .memo-row > * { min-width: 0; }
+    .memo-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: var(--chip);
+      border: 1px solid var(--line);
+      font-size: 13px;
+      font-weight: 300;
+    }
+    .chip form { margin: 0; }
+    .chip button {
+      width: auto;
+      padding: 6px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+
+    /* ✅ 캘린더: 박스 제거 + 크게 */
+    .calendar-wrap {
+      padding: 0;
+      border: none;
+      background: transparent;
+    }
+    #calendar {
+      width: 100%;
+      min-height: 560px;
+      background: transparent;
+    }
+
+    .fc { font-size: 13px; font-weight: 300; }
+    .fc .fc-toolbar-title { font-size: 15px; font-weight: 600; }
+    .fc .fc-button {
+      border-radius: 10px !important;
+      border: 1px solid var(--line) !important;
+      background: rgba(255,255,255,.06) !important;
+      color: var(--text) !important;
+      box-shadow: none !important;
+      font-weight: 600 !important;
+    }
+    .fc .fc-button:hover { background: rgba(255,255,255,.10) !important; }
+    .fc-theme-standard td, .fc-theme-standard th { border-color: rgba(255,255,255,.06); }
+    .fc .fc-scrollgrid, .fc .fc-scrollgrid-section > * { border-color: rgba(255,255,255,.06); }
+
+    .ev-row {
+      display: inline-flex;
+      gap: 6px;
+      align-items: baseline;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+    .ev-title { overflow: hidden; text-overflow: ellipsis; }
+    .ev-time { opacity: .75; flex: 0 0 auto; }
     .presence-bar{
       display:flex;
-      gap:10px;
-      padding:8px 6px;
-      margin-bottom:8px;
-    }
-    .presence-avatar{
-      width:34px;
-      height:34px;
-      border-radius:50%;
-      display:flex;
       align-items:center;
-      justify-content:center;
-      font-weight:600;
-      font-size:14px;
-      position:relative;
-      cursor:default;
-      user-select:none;
+      gap:8px;
+      margin: 0 0 10px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
     }
-    .presence-avatar.online{
-      background:var(--blue);
-      color:#fff;
+    .presence-bar .label{
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 300;
+      flex: 0 0 auto;
+      white-space: nowrap;
     }
-    .presence-avatar.offline{
-      background:var(--gray);
-      color:#fff;
-      opacity:.65;
+    .presence-bar .list{
+      font-size: 12px;
+      font-weight: 300;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1 1 auto;
     }
-    .presence-avatar:hover::after{
-      content:attr(data-label);
-      position:absolute;
-      bottom:-30px;
-      left:50%;
-      transform:translateX(-50%);
-      background:#000;
-      color:#fff;
-      padding:4px 8px;
-      border-radius:8px;
-      font-size:11px;
-      white-space:nowrap;
-      pointer-events:none;
-      z-index:10;
+    .presence-bar .dot{
+      width:6px;height:6px;border-radius:999px;
+      background: rgba(77,163,255,.9);
+      flex:0 0 auto;
     }
 
-    /* =========================
-       ✅ Chat
-    ========================= */
-    .chat-box{
-      height:220px;
-      display:flex;
-      flex-direction:column;
-      gap:8px;
+
+    @media (max-width: 480px) {
+      .wrap { padding: 10px 10px 16px; }
+      .chat-input-row { grid-template-columns: 76px 1fr 66px; }
+      .chat-box { height: 200px; }
+      #calendar { min-height: 620px; }
+      .fc .fc-toolbar { flex-wrap: wrap; gap: 6px; }
+      .modal .grid { grid-template-columns: 1fr; }
     }
-    .chat-messages{
-      flex:1;
-      overflow:auto;
-      padding:8px;
-      border-radius:12px;
-      background:rgba(255,255,255,.04);
-      border:1px solid var(--line);
+
+    /* ✅ 모달 */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 14px;
+      z-index: 9999;
+      pointer-events: auto;
     }
-    .msg{margin-bottom:8px}
-    .msg.me{text-align:right}
-    .bubble{
-      display:inline-block;
-      max-width:80%;
-      padding:9px 11px;
-      border-radius:14px;
-      background:rgba(255,255,255,.07);
-      border:1px solid var(--line);
-      font-size:13px;
+    .modal {
+      width: 100%;
+      max-width: 520px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+      pointer-events: auto; /* ✅ 저장 버튼 탭 무시되는 현상 방지 */
     }
-    .msg.me .bubble{
-      background:rgba(77,163,255,.16);
-      border-color:rgba(77,163,255,.3);
+    .modal h4 { margin: 4px 2px 10px; font-size: 14px; font-weight: 600; }
+    .modal .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
     }
-    .meta{
-      font-size:10px;
-      color:var(--muted);
-      margin-top:2px;
-    }
-    .chat-input-row{
-      display:grid;
-      grid-template-columns:80px 1fr 70px;
-      gap:6px;
-    }
-    input,button{
-      font:inherit;
-      border-radius:12px;
-      border:1px solid var(--line);
-      background:rgba(255,255,255,.05);
-      color:var(--text);
-      padding:8px 10px;
-    }
-    button.primary{
-      background:rgba(77,163,255,.2);
-      border-color:rgba(77,163,255,.35);
-      font-weight:600;
-    }
-    button:disabled{
-      opacity:.5;
-      cursor:not-allowed;
+    .modal .row { display: grid; gap: 6px; margin-bottom: 8px; }
+    .modal label { color: var(--muted); font-size: 11px; font-weight: 300; }
+    .modal textarea { min-height: 88px; resize: none; }
+    .modal .actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 10px;
     }
   </style>
 </head>
 
 <body>
-<div class="wrap">
-
-  <div class="section">
-    <div class="section-title">
-      <h3>채팅</h3>
+  <div class="wrap">
+    <div class="rate-bar">
+      <div class="label">중국(CNY) 조정 환율</div>
+      <div class="val">{{ exchange_rate if exchange_rate else "-" }}</div>
     </div>
 
-    <!-- ✅ Presence -->
-    <div class="presence-bar" id="presenceList"></div>
+    <div class="section">
+      <div class="section-title">
+        <h3>채팅</h3>
+      </div>
 
-    <div class="chat-box">
-      <div id="chatMessages" class="chat-messages"></div>
+      <div class="presence-bar">
+        <span class="dot" aria-hidden="true"></span>
+        <span class="label">최근 접속자</span>
+        <div id="presenceList" class="list">-</div>
+      </div>
 
-      <div class="chat-input-row">
-        <input id="chatSender" type="text" placeholder="이름">
-        <input id="chatInput" type="text" placeholder="메시지 입력">
-        <button id="sendBtn" class="primary" disabled>전송</button>
+      <div class="chat-box">
+        <div id="chatMessages" class="chat-messages"></div>
+
+        <div class="chat-input-row">
+          <input id="chatSender" type="text" placeholder="이름" value="나나" autocomplete="off" inputmode="text">
+          <input id="chatInput" type="text" placeholder="메시지 입력..." autocomplete="off" inputmode="text">
+          <button class="primary" id="sendBtn" type="button">전송</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">
+        <h3>메모</h3>
+        <button class="mini icon-btn" id="refreshMemosBtn" type="button" aria-label="새로고침"><span class="refresh-icon" aria-hidden="true">⟳</span></button>
+      </div>
+
+      <form method="POST" class="memo-row">
+        <input type="text" name="memo_keyword" placeholder="메모 추가..." autocomplete="off" inputmode="text">
+        <button class="primary" type="submit" name="action" value="add_memo">추가</button>
+      </form>
+
+      <div class="memo-list">
+        {% for m in memo_list %}
+          <div class="chip">
+            <span>{{ m }}</span>
+            <form method="POST">
+              <input type="hidden" name="memo_keyword" value="{{ m }}">
+              <button class="danger" type="submit" name="action" value="delete_memo">삭제</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="calendar-wrap">
+      <div class="section-title" style="margin: 6px 2px 10px;">
+        <h3>캘린더</h3>
+        <button class="mini icon-btn" id="refreshCalendarBtn" type="button" aria-label="새로고침"><span class="refresh-icon" aria-hidden="true">⟳</span></button>
+      </div>
+      <div id="calendar"></div>
+    </div>
+  </div>
+
+  <div id="modalBackdrop" class="modal-backdrop">
+    <div class="modal">
+      <h4 id="modalTitle">일정 추가</h4>
+
+      <div class="row">
+        <label>제목</label>
+        <input id="evTitle" type="text" placeholder="예: 미팅 / 발주 / 상담" autocomplete="off" inputmode="text">
+      </div>
+
+      <div class="grid">
+        <div class="row">
+          <label>시작</label>
+          <input id="evStart" type="text" placeholder="YYYY-MM-DD 또는 YYYY-MM-DDTHH:mm" autocomplete="off" inputmode="text">
+        </div>
+        <div class="row">
+          <label>끝(선택)</label>
+          <input id="evEnd" type="text" placeholder="YYYY-MM-DD 또는 YYYY-MM-DDTHH:mm" autocomplete="off" inputmode="text">
+        </div>
+      </div>
+
+      <div class="row">
+        <label>메모(선택)</label>
+        <textarea id="evMemo" placeholder="내용/메모"></textarea>
+      </div>
+
+      <div class="actions">
+        <button id="evDelete" class="danger" type="button" style="display:none;">삭제</button>
+        <button id="evCancel" type="button">취소</button>
+        <button id="evSave" class="primary" type="button">저장</button>
       </div>
     </div>
   </div>
 
-</div>
+  <script>
+    async function jget(url) {
+      const r = await fetch(url, { cache: "no-store" });
+      return await r.json();
+    }
+    async function jpost(url, body) {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      return await r.json();
+    }
+    async function jput(url, body) {
+      const r = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      return await r.json();
+    }
+    async function jdel(url) {
+      const r = await fetch(url, { method: "DELETE" });
+      return await r.json();
+    }
 
-<script>
-/* =========================
-   기본 유틸
-========================= */
-async function jget(u){return (await fetch(u)).json()}
-async function jpost(u,b){return (await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)})).json()}
+    // =========================
+    // ✅ 채팅 (늦게 뜨는 문제 개선)
+    // - 폴링 2초 -> 0.7초
+    // - send 성공 시 즉시 append
+    // =========================
+    let lastChatId = 0;
+    const chatBox = document.getElementById("chatMessages");
+    const chatInput = document.getElementById("chatInput");
+    const chatSender = document.getElementById("chatSender");
+    const sendBtn = document.getElementById("sendBtn");
+    const CHAT_ROOM = "main";
 
-/* =========================
-   채팅 활성화 제어
-========================= */
-const chatSender=document.getElementById("chatSender");
-const chatInput=document.getElementById("chatInput");
-const sendBtn=document.getElementById("sendBtn");
+    // ✅ 브라우저/기기별 고유 ID (로그인 없이 "내 글" 구분)
+    let CLIENT_ID = localStorage.getItem("chat_client_id");
+    if (!CLIENT_ID) {
+      try {
+        CLIENT_ID = (crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+      } catch (e) {
+        CLIENT_ID = (Date.now().toString(36) + Math.random().toString(36).slice(2));
+      }
+      localStorage.setItem("chat_client_id", CLIENT_ID);
+    // ✅ 기기/브라우저별 동물 별명 (client_id가 다르면 자동으로 구분되게)
+    const ANIMAL_KEY = "chat_animal_alias";
+    const ANIMALS = [
+      "고양이","강아지","토끼","여우","곰","사자","호랑이","판다","펭귄","돌고래",
+      "수달","코알라","기린","코끼리","치타","늑대","하마","알파카","다람쥐","고슴도치",
+      "앵무새","부엉이","독수리","거북이","악어","참새","두더지","너구리","햄스터","라쿤"
+    ];
+    function _hash32(str){
+      let h = 2166136261;
+      for (let i=0;i<str.length;i++){
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return (h >>> 0);
+    }
+    let ANIMAL_ALIAS = localStorage.getItem(ANIMAL_KEY);
+    if (!ANIMAL_ALIAS) {
+      try {
+        const n = _hash32(CLIENT_ID);
+        ANIMAL_ALIAS = ANIMALS[n % ANIMALS.length];
+      } catch(e) {
+        ANIMAL_ALIAS = ANIMALS[Math.floor(Math.random()*ANIMALS.length)];
+      }
+      localStorage.setItem(ANIMAL_KEY, ANIMAL_ALIAS);
+    }
 
-function updateChatEnabled(){
-  const ok=(chatSender.value||"").trim().length>0;
-  chatInput.disabled=!ok;
-  sendBtn.disabled=!ok;
-}
-chatSender.addEventListener("input",updateChatEnabled);
-updateChatEnabled();
+    }
 
-/* =========================
-   Client ID
-========================= */
-let CLIENT_ID=localStorage.getItem("client_id");
-if(!CLIENT_ID){
-  CLIENT_ID=crypto.randomUUID();
-  localStorage.setItem("client_id",CLIENT_ID);
-}
+    // ✅ 이름(보낸사람) 기기별 저장 (PC/폰 각각 유지)
+    const NAME_KEY = "chat_sender_name";
+    const savedName = localStorage.getItem(NAME_KEY);
+    if (savedName && savedName.trim()) {
+      chatSender.value = savedName.trim();
+    }
+    const saveName = () => {
+      const v = (chatSender.value || "").trim();
+      if (v) localStorage.setItem(NAME_KEY, v);
+    };
+    chatSender.addEventListener("change", saveName);
+    chatSender.addEventListener("blur", saveName);
 
-/* =========================
-   Presence 시간 포맷
-========================= */
-function formatPresenceTime(iso){
-  const diffMin=Math.floor((Date.now()-new Date(iso))/60000);
-  if(diffMin<2)return"접속중";
-  if(diffMin<60)return diffMin+"분전";
-  const h=Math.floor(diffMin/60);
-  if(h<24)return h+"시간전";
-  return"1일전";
-}
+    // ✅ 최근 접속자(Presence)
+    const presenceListEl = document.getElementById("presenceList");
+    let presenceTimer = null;
+    let presencePingTimer = null;
 
-/* =========================
-   Presence 렌더
-========================= */
-async function presenceRefresh(){
-  const data=await jget("/api/presence/list?minutes=1440");
-  if(!data.ok)return;
-  const wrap=document.getElementById("presenceList");
-  wrap.innerHTML="";
-  data.users.forEach(u=>{
-    const name=u.sender||"익명";
-    const first=name.charAt(0);
-    const state=formatPresenceTime(u.last_seen);
-    const div=document.createElement("div");
-    div.className="presence-avatar "+(state==="접속중"?"online":"offline");
-    div.textContent=first;
-    div.dataset.label=`${name} · ${state}`;
-    wrap.appendChild(div);
-  });
-}
-presenceRefresh();
-setInterval(presenceRefresh,10000);
+    async function presencePing() {
+      try {
+        await jpost("/api/presence/ping", { client_id: CLIENT_ID, sender: (chatSender.value || "").trim() || "익명", animal: ANIMAL_ALIAS });
+      } catch (e) {}
+    }
 
-/* =========================
-   Presence ping
-========================= */
-setInterval(()=>{
-  jpost("/api/presence/ping",{client_id:CLIENT_ID,sender:chatSender.value});
-},20000);
-</script>
+    async function presenceRefresh() {
+      try {
+        const data = await jget("/api/presence/list?minutes=5");
+        if (!data || !data.ok) return;
 
+        const users = (data.users || []).map(u => ({
+          client_id: (u.client_id || ""),
+          sender: ((u.sender || "").trim()),
+          animal: ((u.animal || "").trim()),
+          last_seen: (u.last_seen || null)
+        }));
+
+        // sender 중복이면 동물 별명으로 구분 (client_id 기준으로는 각자 1명)
+        const counts = {};
+        for (const u of users) {
+          const key = u.sender || "";
+          if (!key) continue;
+          counts[key] = (counts[key] || 0) + 1;
+        }
+
+        const labels = users.map(u => {
+          const s = u.sender;
+          const a = u.animal || "동물";
+          if (!s) return a; // 이름이 없으면 동물로 표시
+          if ((counts[s] || 0) >= 2) return `${s}(${a})`; // 중복이면 구분자 추가
+          return s;
+        });
+
+        presenceListEl.textContent = labels.length ? labels.join(", ") : "-";
+      } catch (e) {}
+    }
+
+    function startPresence() {
+      if (presencePingTimer) clearInterval(presencePingTimer);
+      if (presenceTimer) clearInterval(presenceTimer);
+
+      presencePing();
+      presenceRefresh();
+
+      // 20초마다 접속 유지 신호
+      presencePingTimer = setInterval(() => {
+        if (!document.hidden) presencePing();
+      }, 20000);
+
+      // 10초마다 목록 갱신
+      presenceTimer = setInterval(() => {
+        if (!document.hidden) presenceRefresh();
+      }, 10000);
+    }
+
+    function escapeHtml(s) {
+      return (s || "").replace(/[&<>"']/g, (c) => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      }[c]));
+    }
+
+    function formatChatTime(iso) {
+      if (!iso) return "";
+      try {
+        const d = new Date(iso);
+        const parts = new Intl.DateTimeFormat("en-US", {
+          timeZone: "Asia/Seoul",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true
+        }).formatToParts(d);
+
+        const get = (t) => (parts.find(p => p.type === t)?.value || "");
+        const y = get("year");
+        const mo = get("month");
+        const da = get("day");
+        const hourRaw = get("hour");
+        const mi = get("minute");
+        const dayPeriod = (get("dayPeriod") || "").toLowerCase(); // am/pm
+        const h = String(parseInt(hourRaw || "0", 10)); // remove leading 0
+
+        return `-${y}-${mo}-${da} ${dayPeriod}${h}:${mi}`;
+      } catch (e) {
+        return iso;
+      }
+    }
+
+    function setSpinning(btn, on) {
+      if (!btn) return;
+      if (on) btn.classList.add("spinning");
+      else btn.classList.remove("spinning");
+    }
+
+    function appendMsg(m) {
+      const wrap = document.createElement("div");
+      wrap.className = (m && m.client_id && m.client_id === CLIENT_ID) ? "msg me" : "msg";
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.innerHTML = `<b>${escapeHtml(m.sender || "익명")}</b><div style="height:6px"></div>${escapeHtml(m.message)}`;
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = formatChatTime(m.created_at);
+
+      const col = document.createElement("div");
+      col.appendChild(bubble);
+      col.appendChild(meta);
+
+      wrap.appendChild(col);
+      chatBox.appendChild(wrap);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    async function pollChatOnce() {
+      const data = await jget(`/api/chat/messages?room=${encodeURIComponent(CHAT_ROOM)}&after_id=${lastChatId}`);
+      if (data && data.ok && Array.isArray(data.messages)) {
+        for (const m of data.messages) {
+          appendMsg(m);
+          lastChatId = Math.max(lastChatId, m.id);
+        }
+      }
+    }
+
+    let chatPollTimer = null;
+
+    async function pollChat() {
+      if (chatPollTimer) clearTimeout(chatPollTimer);
+
+      if (document.hidden) {
+        chatPollTimer = setTimeout(pollChat, 5000);
+        return;
+      }
+
+      try { await pollChatOnce(); } catch (e) {}
+
+      chatPollTimer = setTimeout(pollChat, 2000);
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) pollChat();
+
+    startPresence();
+    });
+
+    async function sendChat() {
+      saveName();
+      const sender = (chatSender.value || "익명").trim();
+      const message = (chatInput.value || "").trim();
+      if (!message) return;
+
+      sendBtn.disabled = true;
+      chatInput.disabled = true;
+
+      try {
+        chatInput.value = "";
+        const res = await jpost("/api/chat/send", { room: CHAT_ROOM, sender, message, client_id: CLIENT_ID });
+
+        // ✅ 서버가 id/created_at을 주면, 폴링 기다리지 말고 즉시 추가
+        if (res && res.ok) {
+          appendMsg({ id: res.id, sender, message, created_at: res.created_at || "", client_id: CLIENT_ID });
+          lastChatId = Math.max(lastChatId, res.id || lastChatId);
+        } else {
+          // 실패하면 한 번 더 폴링
+          await pollChatOnce();
+        }
+      } catch (e) {
+        try { await pollChatOnce(); } catch (e2) {}
+      } finally {
+        sendBtn.disabled = false;
+        chatInput.disabled = false;
+        chatInput.focus();
+      }
+    }
+
+    sendBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); sendChat(); });
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); sendChat(); }
+    });
+
+    // =========================
+    // ✅ 캘린더 + 모달 (저장 버튼 안눌림 개선)
+    // - 버튼 type=button
+    // - 클릭시 stopPropagation
+    // =========================
+    const modalBackdrop = document.getElementById("modalBackdrop");
+    const modalTitle = document.getElementById("modalTitle");
+    const evTitle = document.getElementById("evTitle");
+    const evStart = document.getElementById("evStart");
+    const evEnd = document.getElementById("evEnd");
+    const evMemo = document.getElementById("evMemo");
+    const evSave = document.getElementById("evSave");
+    const evCancel = document.getElementById("evCancel");
+    const evDelete = document.getElementById("evDelete");
+
+    let currentEventId = null;
+    let calendar = null;
+
+    function openModal(mode, payload) {
+      currentEventId = payload?.id ?? null;
+
+      modalTitle.textContent = mode === "edit" ? "일정 수정" : "일정 추가";
+      evDelete.style.display = mode === "edit" ? "inline-flex" : "none";
+
+      evTitle.value = payload?.title || "";
+      evStart.value = payload?.start || "";
+      evEnd.value = payload?.end || "";
+      evMemo.value = payload?.memo || "";
+
+      modalBackdrop.style.display = "flex";
+    }
+
+    function closeModal() {
+      modalBackdrop.style.display = "none";
+      currentEventId = null;
+    }
+
+    evCancel.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); closeModal(); });
+    modalBackdrop.addEventListener("click", (e) => {
+      if (e.target === modalBackdrop) closeModal();
+    });
+
+    evSave.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const title = (evTitle.value || "").trim();
+      const start = (evStart.value || "").trim();
+      const end = (evEnd.value || "").trim();
+      const memo = (evMemo.value || "").trim();
+
+      if (!title || !start) return;
+
+      evSave.disabled = true;
+
+      try {
+        if (currentEventId) {
+          await jput(`/api/events/${currentEventId}`, { title, start, end: end || null, memo });
+        } else {
+          await jpost("/api/events", { title, start, end: end || null, allDay: false, memo });
+        }
+        closeModal();
+        calendar.refetchEvents();
+      } catch (e2) {
+      } finally {
+        evSave.disabled = false;
+      }
+    });
+
+    evDelete.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (!currentEventId) return;
+      if (!confirm("이 일정을 삭제할까요?")) return;
+
+      evDelete.disabled = true;
+
+      try {
+        await jdel(`/api/events/${currentEventId}`);
+        closeModal();
+        calendar.refetchEvents();
+      } catch (e2) {
+      } finally {
+        evDelete.disabled = false;
+      }
+    });
+
+    async function initCalendar() {
+      const calEl = document.getElementById("calendar");
+
+      calendar = new FullCalendar.Calendar(calEl, {
+        initialView: "dayGridMonth",
+          timeZone: "Asia/Seoul",
+      displayEventTime: false,
+        height: "auto",
+        expandRows: true,
+        nowIndicator: true,
+
+        selectable: true,
+        selectMirror: true,
+        longPressDelay: 180,
+        selectLongPressDelay: 180,
+
+        events: async (info, success, failure) => {
+          try {
+            const data = await jget("/api/events");
+            success(data || []);
+          } catch (e) {
+            failure(e);
+          }
+        },
+
+        dateClick: (arg) => {
+          openModal("add", { title: "", start: arg.dateStr, end: "", memo: "" });
+        },
+
+        select: (sel) => {
+          openModal("add", { title: "", start: sel.startStr, end: sel.endStr || "", memo: "" });
+        },
+
+        eventClick: (info) => {
+          const e = info.event;
+          openModal("edit", {
+            id: e.id,
+            title: e.title,
+            start: e.startStr,
+            end: e.endStr || "",
+            memo: (e.extendedProps && e.extendedProps.memo) ? e.extendedProps.memo : ""
+          });
+        },
+
+        eventContent: (arg) => {
+          const wrap = document.createElement("span");
+          wrap.className = "ev-row";
+
+          const title = document.createElement("span");
+          title.className = "ev-title";
+          title.textContent = arg.event.title || "";
+
+          const time = document.createElement("span");
+          time.className = "ev-time";
+          time.textContent = arg.timeText ? ` ${arg.timeText}` : "";
+
+          wrap.appendChild(title);
+          if (arg.timeText) wrap.appendChild(time);
+
+          return { domNodes: [wrap] };
+        }
+      });
+
+      calendar.render();
+    }
+
+    pollChat();
+
+    startPresence();
+    initCalendar();
+
+  const refreshMemosBtn = document.getElementById("refreshMemosBtn");
+  if (refreshMemosBtn) {
+    refreshMemosBtn.addEventListener("click", () => {
+      setSpinning(refreshMemosBtn, true);
+      // 화면이 바로 이동되기 전에 아이콘이 조금이라도 돌아가게 딜레이
+      setTimeout(() => window.location.reload(), 60);
+    });
+  }
+
+  const refreshCalendarBtn = document.getElementById("refreshCalendarBtn");
+  if (refreshCalendarBtn) {
+    refreshCalendarBtn.addEventListener("click", () => {
+      setSpinning(refreshCalendarBtn, true);
+      if (calendar) calendar.refetchEvents();
+      setTimeout(() => setSpinning(refreshCalendarBtn, false), 800);
+    });
+  }
+  </script>
 </body>
 </html>
