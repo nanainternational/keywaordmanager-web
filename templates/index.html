@@ -169,6 +169,13 @@
     }
     .chat-input-row > * { min-width: 0; }
 
+    .name-error{
+      margin-top: 6px;
+      font-size: 11px;
+      color: rgba(255,90,106,.92);
+      font-weight: 500;
+    }
+
     input, textarea, button {
       font: inherit;
       color: var(--text);
@@ -437,6 +444,7 @@
           <input id="chatInput" type="text" placeholder="메시지 입력..." autocomplete="off" inputmode="text">
           <button class="primary" id="sendBtn" type="button">전송</button>
         </div>
+        <div id="nameError" class="name-error" style="display:none;"></div>
       </div>
     </div>
 
@@ -549,10 +557,14 @@
     const CHAT_ROOM = "main";
     let lastChatId = 0;
 
+    // ✅ 이름 유니크 검증 상태
+    let nameValid = true;
+
     function updateChatEnabled(){
       const nameOk = (chatSender.value || "").trim().length > 0;
-      sendBtn.disabled = !nameOk;
-      chatInput.disabled = !nameOk;
+      const ok = nameOk && nameValid;
+      sendBtn.disabled = !ok;
+      chatInput.disabled = !ok;
     }
 
     function formatChatTime(iso){
@@ -648,20 +660,90 @@
       localStorage.setItem(ANIMAL_KEY, ANIMAL_ALIAS);
     }
 
-    // ✅ 이름(보낸사람) 기기별 저장 (PC/폰 각각 유지)
+    // ✅ 이름(보낸사람) 기기별 저장 (PC/폰 각각 유지) + 유니크 체크
     const NAME_KEY = "chat_sender_name";
     const savedName = localStorage.getItem(NAME_KEY);
     if (savedName && savedName.trim()) {
       chatSender.value = savedName.trim();
     }
-    const saveName = () => {
+
+    const nameErrorEl = document.getElementById("nameError");
+
+    function setNameError(msg){
+      if (!nameErrorEl) return;
+      if (!msg){
+        nameErrorEl.style.display = "none";
+        nameErrorEl.textContent = "";
+        return;
+      }
+      nameErrorEl.style.display = "block";
+      nameErrorEl.textContent = msg;
+    }
+
+    async function validateNameUnique(showAlert){
       const v = (chatSender.value || "").trim();
-      if (v) localStorage.setItem(NAME_KEY, v);
-    };
-    chatSender.addEventListener("change", saveName);
-    chatSender.addEventListener("blur", saveName);
+      // 빈 값이면 그냥 비활성화만
+      if (!v){
+        nameValid = true;
+        setNameError("");
+        updateChatEnabled();
+        return true;
+      }
+
+      try {
+        // ✅ 최근 2분 기준으로 "사용중" 판단
+        const data = await jget("/api/presence/list?minutes=2");
+        const users = (data && data.ok && Array.isArray(data.users)) ? data.users : [];
+        const now = Date.now();
+
+        const taken = users.some(u => {
+          const name = ((u.sender || "").trim()) || ((u.animal || "").trim()) || "";
+          if (!name) return false;
+          if (name !== v) return false;
+          if ((u.client_id || "") === CLIENT_ID) return false;
+
+          const ls = u.last_seen ? new Date(u.last_seen).getTime() : 0;
+          if (!ls) return false;
+          return (now - ls) < 2 * 60 * 1000; // 2분 이내면 사용중
+        });
+
+        if (taken){
+          nameValid = false;
+          setNameError("이미 사용중인 이름입니다. 다른 이름을 입력해 주세요.");
+          if (showAlert) alert("이미 사용중인 이름입니다. 다른 이름을 입력해 주세요.");
+          // ✅ 이름 설정 자체를 막기: 입력값 제거 + 저장 제거
+          chatSender.value = "";
+          localStorage.removeItem(NAME_KEY);
+          updateChatEnabled();
+          return false;
+        }
+
+        nameValid = true;
+        setNameError("");
+        localStorage.setItem(NAME_KEY, v);
+        updateChatEnabled();
+        return true;
+      } catch(e){
+        // 네트워크 문제 등은 일단 허용(차단하면 사용성 나빠짐)
+        nameValid = true;
+        setNameError("");
+        localStorage.setItem(NAME_KEY, v);
+        updateChatEnabled();
+        return true;
+      }
+    }
+
+    // ✅ change/blur에서 유니크 체크 후 저장
+    chatSender.addEventListener("change", () => validateNameUnique(true));
+    chatSender.addEventListener("blur", () => validateNameUnique(false));
+
+    // ✅ 저장된 이름이 있으면 초기 로드 시에도 유니크 체크
+    if ((chatSender.value || "").trim()) {
+      validateNameUnique(false);
+    }
 
     updateChatEnabled();
+
 
     // ✅ 최근 접속자(Presence)
     const presenceListEl = document.getElementById("presenceList");
@@ -669,6 +751,8 @@
     let presencePingTimer = null;
 
     async function presencePing(){
+      const nm = (chatSender.value || "").trim();
+      if (!nm || !nameValid) return;
       try {
         await jpost("/api/presence/ping", {
           client_id: CLIENT_ID,
@@ -780,7 +864,8 @@
 
     async function sendChat(){
       saveName();
-      const sender = (chatSender.value || "익명").trim();
+      const sender = (chatSender.value || "").trim();
+      if (!sender || !nameValid) { updateChatEnabled(); return; }
       const message = (chatInput.value || "").trim();
       if (!message) return;
 
