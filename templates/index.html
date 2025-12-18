@@ -278,77 +278,78 @@
     .ev-title { overflow: hidden; text-overflow: ellipsis; }
     .ev-time { opacity: .75; flex: 0 0 auto; }
     .presence-bar{
-      display:flex;
-      align-items:center;
-      gap:10px;
-      padding:8px 10px;
-      border-radius:12px;
-      background: rgba(255,255,255,.04);
-      border: 1px solid rgba(255,255,255,.08);
-      overflow-x:auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    .presence-avatars{
-      display:flex;
-      align-items:center;
-      gap:8px;
-      flex-wrap:nowrap;
-    }
-    .presence-avatar{
-      width:34px;
-      height:34px;
-      border-radius:50%;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-size:14px;
-      font-weight:700;
-      position:relative;
-      flex:0 0 auto;
-      user-select:none;
-    }
-    .presence-avatar.online{
-      background:#4da3ff;
-      color:#fff;
-    }
-    .presence-avatar.offline{
-      background:#6b7280;
-      color:#fff;
-      opacity:.65;
-    }
-    /* ✅ 접속 상태 점 (인스타 느낌) */
-    .presence-avatar::before{
-      content:"";
-      position:absolute;
-      right:-2px;
-      bottom:-2px;
-      width:10px;
-      height:10px;
-      border-radius:50%;
-      border:2px solid var(--panel, #11141a);
-      background:#9ca3af;
-    }
-    .presence-avatar.online::before{
-      background:#4da3ff;
-    }
-    .presence-avatar:hover::after{
-      content:attr(data-label);
-      position:absolute;
-      left:50%;
-      bottom:-34px;
-      transform:translateX(-50%);
-      background:#000;
-      color:#fff;
-      padding:4px 8px;
-      border-radius:8px;
-      font-size:11px;
-      white-space:nowrap;
-      pointer-events:none;
-      z-index:50;
-    }
-
-
-    @media (max-width: 480px) {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--line);
+}
+.presence-bar .label{
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 300;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+/* ✅ 인스타그램 느낌 원형 + 상태 점 */
+.presence-avatars{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  overflow:hidden;
+  flex: 1 1 auto;
+}
+.presence-avatar{
+  width:34px;
+  height:34px;
+  border-radius:999px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.10);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size: 13px;
+  font-weight: 600;
+  position: relative;
+  flex: 0 0 auto;
+  user-select: none;
+}
+.presence-avatar .status-dot{
+  position:absolute;
+  right:-1px;
+  bottom:-1px;
+  width:10px;
+  height:10px;
+  border-radius:999px;
+  border: 2px solid var(--panel);
+  background: rgba(255,255,255,.30);
+}
+.presence-avatar.online .status-dot{
+  background: rgba(77,163,255,.95); /* 파란 점 */
+}
+.presence-avatar.offline .status-dot{
+  background: rgba(255,255,255,.35); /* 회색 점 */
+}
+.presence-avatar:hover::after{
+  content: attr(data-label);
+  position: absolute;
+  left: 50%;
+  bottom: -34px;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,.85);
+  border: 1px solid rgba(255,255,255,.12);
+  color: rgba(255,255,255,.92);
+  padding: 5px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 20;
+}
+@media (max-width: 480px) {
       .wrap { padding: 10px 10px 16px; }
       .chat-input-row { grid-template-columns: 76px 1fr 66px; }
       .chat-box { height: 200px; }
@@ -409,6 +410,8 @@
       </div>
 
       <div class="presence-bar">
+        <span class="dot" aria-hidden="true"></span>
+        <span class="label">최근 접속자</span>
         <div id="presenceList" class="presence-avatars"></div>
       </div>
 
@@ -527,16 +530,6 @@
     const sendBtn = document.getElementById("sendBtn");
     const CHAT_ROOM = "main";
 
-    // ✅ 이름 입력 전에는 채팅 입력/전송 비활성화
-    function updateChatEnabled() {
-      const name = (chatSender.value || "").trim();
-      const ok = name.length > 0;
-      chatInput.disabled = !ok;
-      sendBtn.disabled = !ok;
-    }
-    chatSender.addEventListener("input", updateChatEnabled);
-
-
     // ✅ 브라우저/기기별 고유 ID (로그인 없이 "내 글" 구분)
     let CLIENT_ID = localStorage.getItem("chat_client_id");
     if (!CLIENT_ID) {
@@ -587,8 +580,6 @@
     chatSender.addEventListener("change", saveName);
     chatSender.addEventListener("blur", saveName);
 
-    updateChatEnabled();
-
     // ✅ 최근 접속자(Presence)
     const presenceListEl = document.getElementById("presenceList");
     let presenceTimer = null;
@@ -600,60 +591,73 @@
       } catch (e) {}
     }
 
-    function formatPresenceTime(iso) {
-      if (!iso) return "";
-      try {
-        const diffMin = Math.floor((Date.now() - new Date(iso)) / 60000);
+    
+function formatPresenceLabel(iso) {
+  if (!iso) return "";
+  try {
+    const diffMin = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
 
-        // ✅ 최근 2분 이내: 접속중
-        if (diffMin < 2) return "접속중";
+    if (diffMin < 2) return "접속중";
+    if (diffMin < 60) return `${diffMin}분전`;
 
-        // ✅ 1~59분: n분전
-        if (diffMin < 60) return `${diffMin}분전`;
+    const h = Math.floor(diffMin / 60);
+    if (h < 24) return `${h}시간전`;
 
-        // ✅ 1~23시간: n시간전
-        const h = Math.floor(diffMin / 60);
-        if (h < 24) return `${h}시간전`;
-
-        // ✅ 24시간 이상: 1일전
-        return "1일전";
-      } catch (e) {
-        return "";
-      }
-    }
+    return "1일전";
+  } catch (e) {
+    return "";
+  }
+}
 
 async function presenceRefresh() {
-      try {
-        // ✅ 2~5명 소수 사용 기준: 하루치까지 가져와서 "n분전/n시간전/1일전" 표기
-        const data = await jget("/api/presence/list?minutes=1440");
-        if (!data || !data.ok) return;
+  try {
+    // ✅ 24시간 범위에서 가져오고(어차피 2~5명), 화면에서는 sender 기준으로 중복 제거
+    const data = await jget("/api/presence/list?minutes=1440");
+    if (!data || !data.ok) return;
 
-        const users = (data.users || []).map(u => ({
-          client_id: (u.client_id || ""),
-          name: ((u.sender || "").trim()) || ((u.animal || "").trim()) || "익명",
-          last_seen: (u.last_seen || null),
-        }));
+    const users = Array.isArray(data.users) ? data.users : [];
 
-        // ✅ 최근 순으로 최대 8개만 (원하면 늘려도 됨)
-        const slice = users.slice(0, 8);
-
-        const frag = document.createDocumentFragment();
-        slice.forEach(u => {
-          const state = formatPresenceTime(u.last_seen);
-          const online = (state === "접속중");
-
-          const el = document.createElement("div");
-          el.className = "presence-avatar " + (online ? "online" : "offline");
-          el.textContent = (u.name || "익명").charAt(0);
-          el.setAttribute("data-label", `${u.name} · ${state}`);
-          frag.appendChild(el);
-        });
-
-        presenceListEl.innerHTML = "";
-        presenceListEl.appendChild(frag);
-        if (!slice.length) presenceListEl.textContent = "-";
-      } catch (e) {}
+    // ✅ sender(이름) 기준으로 최신 1개만 남김 (같은 사람이 여러 탭/기기면 1개로)
+    const seen = new Set();
+    const picked = [];
+    for (const u of users) {
+      const sender = ((u.sender || "").trim()) || "익명";
+      if (seen.has(sender)) continue;
+      seen.add(sender);
+      picked.push({
+        sender,
+        last_seen: u.last_seen || null
+      });
+      if (picked.length >= 5) break; // 2~5명 내외
     }
+
+    // ✅ 렌더
+    presenceListEl.innerHTML = "";
+    if (!picked.length) {
+      presenceListEl.textContent = "-";
+      return;
+    }
+
+    for (const p of picked) {
+      const name = p.sender;
+      const first = name.slice(0, 1) || "?";
+      const state = formatPresenceLabel(p.last_seen);
+      const online = state === "접속중";
+
+      const av = document.createElement("div");
+      av.className = "presence-avatar " + (online ? "online" : "offline");
+      av.setAttribute("data-label", `${name} · ${state}`);
+      av.textContent = first;
+
+      const dot = document.createElement("span");
+      dot.className = "status-dot";
+      dot.setAttribute("aria-hidden", "true");
+      av.appendChild(dot);
+
+      presenceListEl.appendChild(av);
+    }
+  } catch (e) {}
+}
 
     function startPresence() {
       if (presencePingTimer) clearInterval(presencePingTimer);
@@ -665,12 +669,12 @@ async function presenceRefresh() {
       // 20초마다 접속 유지 신호
       presencePingTimer = setInterval(() => {
         if (!document.hidden) presencePing();
-      }, 30000);
+      }, 20000);
 
       // 10초마다 목록 갱신
       presenceTimer = setInterval(() => {
         if (!document.hidden) presenceRefresh();
-      }, 15000);
+      }, 10000);
     }
 
     function escapeHtml(s) {
@@ -790,7 +794,8 @@ async function presenceRefresh() {
       } catch (e) {
         try { await pollChatOnce(); } catch (e2) {}
       } finally {
-        updateChatEnabled();
+        sendBtn.disabled = false;
+        chatInput.disabled = false;
         chatInput.focus();
       }
     }
