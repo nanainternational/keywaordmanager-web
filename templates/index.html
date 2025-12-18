@@ -298,6 +298,20 @@
       gap:8px;
       flex-wrap:nowrap;
     }
+    .presence-item{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:2px;
+      flex:0 0 auto;
+    }
+    .presence-time{
+      font-size:10px;
+      color: rgba(255,255,255,.62);
+      line-height: 1;
+      margin-top:2px;
+      white-space:nowrap;
+    }
     .presence-avatar{
       width:34px;
       height:34px;
@@ -679,8 +693,11 @@
         const h = Math.floor(diffMin / 60);
         if (h < 24) return `${h}시간전`;
 
-        // ✅ 24시간 이상: 1일전
-        return "1일전";
+        // ✅ 24시간 이상: n일전 / n달전
+        const d = Math.floor(diffMin / 1440); // 1440 = 60*24
+        if (d < 30) return `${d}일전`;
+        const mo = Math.floor(d / 30);
+        return `${mo}달전`;
       } catch(e){
         return "";
       }
@@ -688,8 +705,8 @@
 
     async function presenceRefresh(){
       try {
-        // ✅ 2~5명 소수 사용 기준: 하루치까지 가져와서 "n분전/n시간전/1일전" 표기
-        const data = await jget("/api/presence/list?minutes=1440");
+        // ✅ 2~5명 소수 사용 기준: 최근 기록까지 가져와서 "n분전/n시간전/n일전/n달전" 표기
+        const data = await jget("/api/presence/list?minutes=525600");
         if (!data || !data.ok) return;
 
         const users = (data.users || []).map(u => ({
@@ -706,11 +723,22 @@
           const state = formatPresenceTime(u.last_seen);
           const online = (state === "접속중");
 
+          const item = document.createElement("div");
+          item.className = "presence-item";
+
           const el = document.createElement("div");
           el.className = "presence-avatar " + (online ? "online" : "offline");
           el.textContent = (u.name || "익명").charAt(0);
           el.setAttribute("data-label", `${u.name} · ${state}`);
-          frag.appendChild(el);
+
+          const t = document.createElement("div");
+          t.className = "presence-time";
+          t.textContent = state;
+
+          item.appendChild(el);
+          item.appendChild(t);
+
+          frag.appendChild(item);
         });
 
         presenceListEl.innerHTML = "";
