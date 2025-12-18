@@ -277,6 +277,38 @@
     }
     .ev-title { overflow: hidden; text-overflow: ellipsis; }
     .ev-time { opacity: .75; flex: 0 0 auto; }
+    .presence-bar{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      margin: 0 0 10px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+    }
+    .presence-bar .label{
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 300;
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .presence-bar .list{
+      font-size: 12px;
+      font-weight: 300;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1 1 auto;
+    }
+    .presence-bar .dot{
+      width:6px;height:6px;border-radius:999px;
+      background: rgba(77,163,255,.9);
+      flex:0 0 auto;
+    }
+
 
     @media (max-width: 480px) {
       .wrap { padding: 10px 10px 16px; }
@@ -336,6 +368,12 @@
     <div class="section">
       <div class="section-title">
         <h3>채팅</h3>
+      </div>
+
+      <div class="presence-bar">
+        <span class="dot" aria-hidden="true"></span>
+        <span class="label">최근 접속자</span>
+        <div id="presenceList" class="list">-</div>
       </div>
 
       <div class="chat-box">
@@ -464,6 +502,68 @@
       localStorage.setItem("chat_client_id", CLIENT_ID);
     }
 
+    // ✅ 이름(보낸사람) 기기별 저장 (PC/폰 각각 유지)
+    const NAME_KEY = "chat_sender_name";
+    const savedName = localStorage.getItem(NAME_KEY);
+    if (savedName && savedName.trim()) {
+      chatSender.value = savedName.trim();
+    }
+    const saveName = () => {
+      const v = (chatSender.value || "").trim();
+      if (v) localStorage.setItem(NAME_KEY, v);
+    };
+    chatSender.addEventListener("change", saveName);
+    chatSender.addEventListener("blur", saveName);
+
+    // ✅ 최근 접속자(Presence)
+    const presenceListEl = document.getElementById("presenceList");
+    let presenceTimer = null;
+    let presencePingTimer = null;
+
+    async function presencePing() {
+      try {
+        await jpost("/api/presence/ping", { client_id: CLIENT_ID, sender: (chatSender.value || "").trim() || "익명" });
+      } catch (e) {}
+    }
+
+    async function presenceRefresh() {
+      try {
+        const data = await jget("/api/presence/list?minutes=5");
+        if (!data || !data.ok) return;
+
+        const names = (data.users || [])
+          .map(u => (u.sender || "").trim())
+          .filter(Boolean);
+
+        // 중복 이름 제거(표시만)
+        const uniq = [];
+        const seen = new Set();
+        for (const n of names) {
+          if (!seen.has(n)) { seen.add(n); uniq.push(n); }
+        }
+
+        presenceListEl.textContent = uniq.length ? uniq.join(", ") : "-";
+      } catch (e) {}
+    }
+
+    function startPresence() {
+      if (presencePingTimer) clearInterval(presencePingTimer);
+      if (presenceTimer) clearInterval(presenceTimer);
+
+      presencePing();
+      presenceRefresh();
+
+      // 20초마다 접속 유지 신호
+      presencePingTimer = setInterval(() => {
+        if (!document.hidden) presencePing();
+      }, 20000);
+
+      // 10초마다 목록 갱신
+      presenceTimer = setInterval(() => {
+        if (!document.hidden) presenceRefresh();
+      }, 10000);
+    }
+
     function escapeHtml(s) {
       return (s || "").replace(/[&<>"']/g, (c) => ({
         "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
@@ -553,9 +653,12 @@
 
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) pollChat();
+
+    startPresence();
     });
 
     async function sendChat() {
+      saveName();
       const sender = (chatSender.value || "익명").trim();
       const message = (chatInput.value || "").trim();
       if (!message) return;
@@ -744,6 +847,8 @@
     }
 
     pollChat();
+
+    startPresence();
     initCalendar();
 
   const refreshMemosBtn = document.getElementById("refreshMemosBtn");
