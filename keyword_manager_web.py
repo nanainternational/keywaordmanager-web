@@ -518,6 +518,29 @@ def presence_list():
             for r in rows
         ]
     })
+    
+# ===============================
+# ✅ PWA (manifest / service worker)
+# ===============================
+from flask import send_from_directory
+
+@app.route("/service-worker.js")
+def service_worker():
+    return send_from_directory(
+        "static",
+        "service-worker.js",
+        mimetype="application/javascript",
+        max_age=0
+    )
+
+@app.route("/manifest.webmanifest")
+def webmanifest():
+    return send_from_directory(
+        "static",
+        "manifest.webmanifest",
+        mimetype="application/manifest+json",
+        max_age=0
+    )
 
 if __name__ == "__main__":
     ensure_db()
