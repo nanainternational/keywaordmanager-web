@@ -1,228 +1,125 @@
-from flask import Flask, render_template, request, jsonify
-from datetime import datetime
-import pytz
 import os
-import re
+import time
+import json
+import threading
+from datetime import datetime
+from urllib.parse import quote_plus
+
+import psycopg2
+import psycopg2.extras
 import requests
 from bs4 import BeautifulSoup
-from flask_cors import CORS
-
-# ✅ Postgres(Supabase) 연결용
-import psycopg
-import threading
+from flask import Flask, request, jsonify, render_template
 
 app = Flask(__name__)
-CORS(app)
-
-tz = pytz.timezone("Asia/Seoul")
-
-_DB_READY = False
-_DB_LOCK = threading.Lock()
 
 # ===============================
-# ✅ DB URL (한 번만 로드/출력)
+# ✅ TZ
 # ===============================
-_CACHED_DATABASE_URL = None
+try:
+    import pytz
+    tz = pytz.timezone("Asia/Seoul")
+except Exception:
+    tz = None
 
-
-def _get_database_url():
-    global _CACHED_DATABASE_URL
-    if _CACHED_DATABASE_URL:
-        return _CACHED_DATABASE_URL
-
-    url = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
-    if not url:
-        raise RuntimeError("DATABASE_URL (or SUPABASE_DB_URL) is required")
-
-    # 안전 출력(비번 숨김)
-    safe = url.split("@", 1)[-1] if "@" in url else url
-    print(f"✅ Using DATABASE_URL: postgresql://***@{safe}")
-
-    _CACHED_DATABASE_URL = url
-    return url
-
-
+# ===============================
+# ✅ DB
+# ===============================
 def get_conn():
-    return psycopg.connect(_get_database_url(), connect_timeout=10)
-
-
-# ===============================
-# ✅ DB 초기화 (한 번만)
-# ===============================
-def init_db():
-    ddl = """
-create table if not exists memos (
-  id bigserial primary key,
-  content text not null,
-  created_at timestamptz not null default now()
-);
-
--- ✅ 중복 메모 방지 (unique index)
-create unique index if not exists memos_content_uq on memos (content);
-
--- ✅ 채팅
-create table if not exists chat_messages (
-  id bigserial primary key,
-  room text not null,
-  sender text not null,
-  message text not null,
-  created_at timestamptz not null default now()
-);
-
--- ✅ (레거시) events: 예전 텍스트 기반 (남겨둠)
-create table if not exists events (
-  id bigserial primary key,
-  title text not null,
-  start_at text,
-  end_at text,
-  all_day int4 not null default 0,
-  memo text,
-  created_at timestamptz not null default now()
-);
-
--- ✅ calendar_events: FullCalendar용 (timestamptz)
-create table if not exists calendar_events (
-  id bigserial primary key,
-  title text not null,
-  start_time timestamptz,
-  end_time timestamptz,
-  created_at timestamptz not null default now(),
-  all_day int4 not null default 0,
-  memo text
-);
-"""
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(ddl)
-        conn.commit()
-
-
-# ===============================
-# ✅ Calendar helpers (KST 기준)
-# ===============================
-def _parse_dt(val):
-    """val: 'YYYY-MM-DD' 또는 ISO 문자열. None 가능."""
-    if val is None:
-        return None
-    if isinstance(val, str):
-        s = val.strip()
-        if not s:
-            return None
-
-        # 날짜만 들어오면 KST 00:00
-        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
-            y, mo, d = map(int, s.split("-"))
-            return datetime(y, mo, d, 0, 0, 0, tzinfo=tz)
-
-        try:
-            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=tz)
-            return dt.astimezone(tz)
-        except Exception:
-            return None
-    return None
-
-
-def _dt_to_fullcalendar_start(dt, all_day):
-    if not dt:
-        return None
-    dt_kst = dt.astimezone(tz) if dt.tzinfo else dt.replace(tzinfo=tz)
-    if all_day:
-        return dt_kst.date().isoformat()
-    return dt_kst.isoformat()
-
-
-def _ensure_calendar_events_columns(cur):
-    """배포 중 스키마가 꼬였을 때를 대비해 컬럼을 보정."""
-    cur.execute(
-        """
-        select 1
-        from information_schema.columns
-        where table_schema='public' and table_name='calendar_events' and column_name='all_day'
-        """
-    )
-    if cur.fetchone() is None:
-        cur.execute("alter table calendar_events add column all_day int4 not null default 0")
-
-    cur.execute(
-        """
-        select 1
-        from information_schema.columns
-        where table_schema='public' and table_name='calendar_events' and column_name='memo'
-        """
-    )
-    if cur.fetchone() is None:
-        cur.execute("alter table calendar_events add column memo text")
-
-    cur.execute(
-        """
-        select 1
-        from information_schema.columns
-        where table_schema='public' and table_name='calendar_events' and column_name='created_at'
-        """
-    )
-    if cur.fetchone() is None:
-        cur.execute("alter table calendar_events add column created_at timestamptz not null default now()")
-
-
-def migrate_events_to_calendar_events_once():
-    """레거시 events -> calendar_events (calendar_events가 비어있을 때만 1회)."""
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            _ensure_calendar_events_columns(cur)
-
-            cur.execute("select count(*) from calendar_events")
-            cal_cnt = cur.fetchone()[0] or 0
-            if cal_cnt > 0:
-                conn.commit()
-                return
-
-            cur.execute("select id, title, start_at, end_at, all_day, memo, created_at from events order by id asc")
-            rows = cur.fetchall()
-            if not rows:
-                conn.commit()
-                return
-
-            for (_id, title, start_at, end_at, all_day, memo, created_at) in rows:
-                st = _parse_dt(start_at)
-                et = _parse_dt(end_at) if end_at else None
-                cur.execute(
-                    """
-                    insert into calendar_events (title, start_time, end_time, all_day, memo, created_at)
-                    values (%s, %s, %s, %s, %s, %s)
-                    """,
-                    (title or "", st, et, int(all_day or 0), memo, created_at or datetime.now(tz)),
-                )
-        conn.commit()
-
+    db_url = os.environ.get("DATABASE_URL", "").strip()
+    if not db_url:
+        raise RuntimeError("DATABASE_URL not set")
+    return psycopg2.connect(db_url)
 
 def ensure_db():
-    global _DB_READY
-    if _DB_READY:
-        return
-    with _DB_LOCK:
-        if _DB_READY:
-            return
-        init_db()
-        # ✅ 스키마 보정 + (비었을 때만) 마이그레이션 1회
-        migrate_events_to_calendar_events_once()
-        _DB_READY = True
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # memos
+            cur.execute(
+                """
+                create table if not exists memos(
+                    id serial primary key,
+                    content text unique,
+                    created_at timestamptz default now()
+                )
+                """
+            )
 
+            # chat_messages
+            cur.execute(
+                """
+                create table if not exists chat_messages(
+                    id serial primary key,
+                    room text not null default 'main',
+                    sender text,
+                    message text,
+                    created_at timestamptz default now()
+                )
+                """
+            )
+
+            # calendar_events (기존 테이블 호환)
+            cur.execute(
+                """
+                create table if not exists calendar_events(
+                    id serial primary key,
+                    title text,
+                    start_time timestamptz,
+                    end_time timestamptz,
+                    all_day int default 0,
+                    memo text,
+                    created_at timestamptz default now()
+                )
+                """
+            )
+
+        conn.commit()
+
+def _ensure_calendar_events_columns(cur):
+    # 기존 테이블이 있더라도 컬럼 누락되면 추가
+    cur.execute("select column_name from information_schema.columns where table_name='calendar_events'")
+    cols = {r[0] for r in cur.fetchall()}
+
+    def add_col(sql):
+        cur.execute(sql)
+
+    if "memo" not in cols:
+        add_col("alter table calendar_events add column memo text")
+    if "created_at" not in cols:
+        add_col("alter table calendar_events add column created_at timestamptz default now()")
+    if "all_day" not in cols:
+        add_col("alter table calendar_events add column all_day int default 0")
+
+def _parse_dt(s):
+    if not s:
+        return None
+    try:
+        # datetime-local 형식 "YYYY-MM-DDTHH:MM"
+        return datetime.fromisoformat(s)
+    except Exception:
+        try:
+            return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+def _dt_to_fullcalendar_start(dt, is_all_day):
+    if not dt:
+        return None
+    try:
+        if is_all_day:
+            return dt.strftime("%Y-%m-%d")
+        return dt.strftime("%Y-%m-%dT%H:%M")
+    except Exception:
+        return None
 
 # ===============================
-# ✅ 환율 (캐시)
+# ✅ 환율 (시티은행)
 # ===============================
 cached_rate = {"value": None, "fetched_date": None}
 
-
 def get_adjusted_exchange_rate():
-    now = datetime.now(tz)
-    REFRESH_HOUR = 9
-    REFRESH_MINUTE = 5
-    refresh_key = now.strftime(f"%Y-%m-%d-{REFRESH_HOUR:02d}-{REFRESH_MINUTE:02d}")
-
-    if cached_rate["value"] and cached_rate["fetched_date"] == refresh_key:
+    today = datetime.now().strftime("%Y-%m-%d")
+    if cached_rate["value"] and cached_rate["fetched_date"] == today:
         return cached_rate["value"]
 
     try:
@@ -238,13 +135,12 @@ def get_adjusted_exchange_rate():
                 base = float(value.text.strip().replace(",", ""))
                 adjusted = round((base + 2) * 1.1, 2)
                 cached_rate["value"] = adjusted
-                cached_rate["fetched_date"] = refresh_key
+                cached_rate["fetched_date"] = today
                 return adjusted
     except Exception as e:
         print("환율 오류:", e)
 
     return cached_rate["value"]
-
 
 # ===============================
 # ✅ Health (UptimeRobot)
@@ -252,7 +148,6 @@ def get_adjusted_exchange_rate():
 @app.route("/health", methods=["GET", "HEAD"])
 def health():
     return ("", 200)
-
 
 # ===============================
 # ✅ 메인 페이지 (GET/POST/HEAD)
@@ -283,7 +178,8 @@ def index():
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("select content from memos order by content")
+            # ✅ 최신 메모가 위로(=id desc)
+            cur.execute("select content from memos order by id desc")
             memo_list = [r[0] for r in cur.fetchall()]
 
     return render_template(
@@ -291,7 +187,6 @@ def index():
         memo_list=memo_list,
         exchange_rate=get_adjusted_exchange_rate(),
     )
-
 
 # ===============================
 # ✅ 메모 API (실시간 동기화용)
@@ -315,7 +210,6 @@ def api_get_memos():
     out = [{"id": r[0], "content": r[1], "created_at": r[2].isoformat() if r[2] else None} for r in rows]
     return jsonify(out)
 
-
 @app.route("/api/memos", methods=["POST"])
 def api_create_memo():
     ensure_db()
@@ -324,16 +218,17 @@ def api_create_memo():
     if not content:
         return jsonify({"ok": False, "error": "empty"}), 400
 
+    now = datetime.now(tz) if tz else datetime.now()
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("insert into memos (content, created_at) values (%s, %s) on conflict do nothing returning id",
-                        (content, datetime.now(tz)))
+            cur.execute(
+                "insert into memos (content, created_at) values (%s, %s) on conflict do nothing returning id",
+                (content, now),
+            )
             row = cur.fetchone()
         conn.commit()
 
-    # 중복이면 row가 None일 수 있음
     return jsonify({"ok": True, "id": row[0] if row else None})
-
 
 @app.route("/api/memos/<int:memo_id>", methods=["DELETE"])
 def api_delete_memo(memo_id):
@@ -343,7 +238,6 @@ def api_delete_memo(memo_id):
             cur.execute("delete from memos where id=%s", (memo_id,))
         conn.commit()
     return jsonify({"ok": True})
-
 
 # ===============================
 # ✅ 캘린더 API (calendar_events만 사용)
@@ -377,7 +271,6 @@ def get_events():
         )
     return jsonify(out)
 
-
 @app.route("/api/events", methods=["POST"])
 def create_event():
     ensure_db()
@@ -392,6 +285,7 @@ def create_event():
     if not title or not st:
         return jsonify({"ok": False, "error": "title/start required"}), 400
 
+    now = datetime.now(tz) if tz else datetime.now()
     with get_conn() as conn:
         with conn.cursor() as cur:
             _ensure_calendar_events_columns(cur)
@@ -401,13 +295,12 @@ def create_event():
                 values (%s, %s, %s, %s, %s, %s)
                 returning id
                 """,
-                (title, st, et, all_day, memo, datetime.now(tz)),
+                (title, st, et, all_day, memo, now),
             )
             event_id = cur.fetchone()[0]
         conn.commit()
 
     return jsonify({"ok": True, "id": event_id})
-
 
 @app.route("/api/events/<int:event_id>", methods=["PUT"])
 def update_event(event_id):
@@ -450,7 +343,6 @@ def update_event(event_id):
 
     return jsonify({"ok": True})
 
-
 @app.route("/api/events/<int:event_id>", methods=["DELETE"])
 def delete_event(event_id):
     ensure_db()
@@ -459,7 +351,6 @@ def delete_event(event_id):
             cur.execute("delete from calendar_events where id=%s", (event_id,))
         conn.commit()
     return jsonify({"ok": True})
-
 
 # ===============================
 # ✅ 채팅 API
@@ -493,7 +384,6 @@ def chat_messages():
         }
     )
 
-
 @app.route("/api/chat/send", methods=["POST"])
 def send_chat():
     ensure_db()
@@ -505,7 +395,7 @@ def send_chat():
     if not message:
         return jsonify({"ok": False, "error": "empty_message"}), 400
 
-    now = datetime.now(tz)
+    now = datetime.now(tz) if tz else datetime.now()
 
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -521,7 +411,6 @@ def send_chat():
         conn.commit()
 
     return jsonify({"ok": True, "id": msg_id, "created_at": now.isoformat()})
-
 
 if __name__ == "__main__":
     ensure_db()
