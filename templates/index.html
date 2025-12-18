@@ -280,33 +280,71 @@
     .presence-bar{
       display:flex;
       align-items:center;
-      gap:8px;
-      margin: 0 0 10px;
-      padding: 8px 10px;
-      border-radius: 12px;
+      gap:10px;
+      padding:8px 10px;
+      border-radius:12px;
       background: rgba(255,255,255,.04);
-      border: 1px solid var(--line);
+      border: 1px solid rgba(255,255,255,.08);
+      overflow-x:auto;
+      -webkit-overflow-scrolling: touch;
     }
-    .presence-bar .label{
-      color: var(--muted);
-      font-size: 11px;
-      font-weight: 300;
-      flex: 0 0 auto;
-      white-space: nowrap;
+    .presence-avatars{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:nowrap;
     }
-    .presence-bar .list{
-      font-size: 12px;
-      font-weight: 300;
-      color: var(--text);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      flex: 1 1 auto;
-    }
-    .presence-bar .dot{
-      width:6px;height:6px;border-radius:999px;
-      background: rgba(77,163,255,.9);
+    .presence-avatar{
+      width:34px;
+      height:34px;
+      border-radius:50%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:14px;
+      font-weight:700;
+      position:relative;
       flex:0 0 auto;
+      user-select:none;
+    }
+    .presence-avatar.online{
+      background:#4da3ff;
+      color:#fff;
+    }
+    .presence-avatar.offline{
+      background:#6b7280;
+      color:#fff;
+      opacity:.65;
+    }
+    /* ✅ 접속 상태 점 (인스타 느낌) */
+    .presence-avatar::before{
+      content:"";
+      position:absolute;
+      right:-2px;
+      bottom:-2px;
+      width:10px;
+      height:10px;
+      border-radius:50%;
+      border:2px solid var(--panel, #11141a);
+      background:#9ca3af;
+    }
+    .presence-avatar.online::before{
+      background:#4da3ff;
+    }
+    .presence-avatar:hover::after{
+      content:attr(data-label);
+      position:absolute;
+      left:50%;
+      bottom:-34px;
+      transform:translateX(-50%);
+      background:#000;
+      color:#fff;
+      padding:4px 8px;
+      border-radius:8px;
+      font-size:11px;
+      white-space:nowrap;
+      pointer-events:none;
+      z-index:50;
     }
 
 
@@ -371,9 +409,7 @@
       </div>
 
       <div class="presence-bar">
-        <span class="dot" aria-hidden="true"></span>
-        <span class="label">최근 접속자</span>
-        <div id="presenceList" class="list">-</div>
+        <div id="presenceList" class="presence-avatars"></div>
       </div>
 
       <div class="chat-box">
@@ -491,6 +527,16 @@
     const sendBtn = document.getElementById("sendBtn");
     const CHAT_ROOM = "main";
 
+    // ✅ 이름 입력 전에는 채팅 입력/전송 비활성화
+    function updateChatEnabled() {
+      const name = (chatSender.value || "").trim();
+      const ok = name.length > 0;
+      chatInput.disabled = !ok;
+      sendBtn.disabled = !ok;
+    }
+    chatSender.addEventListener("input", updateChatEnabled);
+
+
     // ✅ 브라우저/기기별 고유 ID (로그인 없이 "내 글" 구분)
     let CLIENT_ID = localStorage.getItem("chat_client_id");
     if (!CLIENT_ID) {
@@ -541,6 +587,8 @@
     chatSender.addEventListener("change", saveName);
     chatSender.addEventListener("blur", saveName);
 
+    updateChatEnabled();
+
     // ✅ 최근 접속자(Presence)
     const presenceListEl = document.getElementById("presenceList");
     let presenceTimer = null;
@@ -552,35 +600,58 @@
       } catch (e) {}
     }
 
-    async function presenceRefresh() {
+    function formatPresenceTime(iso) {
+      if (!iso) return "";
       try {
-        const data = await jget("/api/presence/list?minutes=5");
+        const diffMin = Math.floor((Date.now() - new Date(iso)) / 60000);
+
+        // ✅ 최근 2분 이내: 접속중
+        if (diffMin < 2) return "접속중";
+
+        // ✅ 1~59분: n분전
+        if (diffMin < 60) return `${diffMin}분전`;
+
+        // ✅ 1~23시간: n시간전
+        const h = Math.floor(diffMin / 60);
+        if (h < 24) return `${h}시간전`;
+
+        // ✅ 24시간 이상: 1일전
+        return "1일전";
+      } catch (e) {
+        return "";
+      }
+    }
+
+async function presenceRefresh() {
+      try {
+        // ✅ 2~5명 소수 사용 기준: 하루치까지 가져와서 "n분전/n시간전/1일전" 표기
+        const data = await jget("/api/presence/list?minutes=1440");
         if (!data || !data.ok) return;
 
         const users = (data.users || []).map(u => ({
           client_id: (u.client_id || ""),
-          sender: ((u.sender || "").trim()),
-          animal: ((u.animal || "").trim()),
-          last_seen: (u.last_seen || null)
+          name: ((u.sender || "").trim()) || ((u.animal || "").trim()) || "익명",
+          last_seen: (u.last_seen || null),
         }));
 
-        // sender 중복이면 동물 별명으로 구분 (client_id 기준으로는 각자 1명)
-        const counts = {};
-        for (const u of users) {
-          const key = u.sender || "";
-          if (!key) continue;
-          counts[key] = (counts[key] || 0) + 1;
-        }
+        // ✅ 최근 순으로 최대 8개만 (원하면 늘려도 됨)
+        const slice = users.slice(0, 8);
 
-        const labels = users.map(u => {
-          const s = u.sender;
-          const a = u.animal || "동물";
-          if (!s) return a; // 이름이 없으면 동물로 표시
-          if ((counts[s] || 0) >= 2) return `${s}(${a})`; // 중복이면 구분자 추가
-          return s;
+        const frag = document.createDocumentFragment();
+        slice.forEach(u => {
+          const state = formatPresenceTime(u.last_seen);
+          const online = (state === "접속중");
+
+          const el = document.createElement("div");
+          el.className = "presence-avatar " + (online ? "online" : "offline");
+          el.textContent = (u.name || "익명").charAt(0);
+          el.setAttribute("data-label", `${u.name} · ${state}`);
+          frag.appendChild(el);
         });
 
-        presenceListEl.textContent = labels.length ? labels.join(", ") : "-";
+        presenceListEl.innerHTML = "";
+        presenceListEl.appendChild(frag);
+        if (!slice.length) presenceListEl.textContent = "-";
       } catch (e) {}
     }
 
@@ -594,12 +665,12 @@
       // 20초마다 접속 유지 신호
       presencePingTimer = setInterval(() => {
         if (!document.hidden) presencePing();
-      }, 20000);
+      }, 30000);
 
       // 10초마다 목록 갱신
       presenceTimer = setInterval(() => {
         if (!document.hidden) presenceRefresh();
-      }, 10000);
+      }, 15000);
     }
 
     function escapeHtml(s) {
@@ -719,8 +790,7 @@
       } catch (e) {
         try { await pollChatOnce(); } catch (e2) {}
       } finally {
-        sendBtn.disabled = false;
-        chatInput.disabled = false;
+        updateChatEnabled();
         chatInput.focus();
       }
     }
