@@ -224,12 +224,12 @@
     .chip {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      border-radius: 999px;
+      gap: 6px;
+      padding: 7px 9px;
       background: var(--chip);
       border: 1px solid var(--line);
-      font-size: 13px;
+      border-radius: 999px;
+      font-size: 12px;
       font-weight: 300;
     }
     .chip form { margin: 0; }
@@ -240,20 +240,16 @@
       font-size: 12px;
     }
 
-        /* ✅ 캘린더: 원래 디자인(박스) 복구 */
+    /* ✅ 캘린더: 박스 제거 + 크게 */
     .calendar-wrap {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 10px;
+      padding: 0;
+      border: none;
+      background: transparent;
     }
     #calendar {
       width: 100%;
       min-height: 560px;
-      border-radius: 12px;
-      background: rgba(255,255,255,.04);
-      border: 1px solid rgba(255,255,255,.08);
-      overflow: hidden;
+      background: transparent;
     }
 
     .fc { font-size: 13px; font-weight: 300; }
@@ -281,38 +277,79 @@
     }
     .ev-title { overflow: hidden; text-overflow: ellipsis; }
     .ev-time { opacity: .75; flex: 0 0 auto; }
-.presence-bar{
+
+
+    /* ✅ presence */
+    .presence-bar{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:6px 8px;
+      border-radius:12px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.08);
+      overflow-x:auto;
+      -webkit-overflow-scrolling: touch;
+      margin-bottom: 10px;
+    }
+    .presence-avatars{
       display:flex;
       align-items:center;
       gap:8px;
-      margin: 0 0 10px;
-      padding: 8px 10px;
-      border-radius: 12px;
-      background: rgba(255,255,255,.04);
-      border: 1px solid var(--line);
+      flex-wrap:nowrap;
     }
-    .presence-bar .label{
-      color: var(--muted);
-      font-size: 11px;
-      font-weight: 300;
-      flex: 0 0 auto;
-      white-space: nowrap;
-    }
-    .presence-bar .list{
-      font-size: 12px;
-      font-weight: 300;
-      color: var(--text);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      flex: 1 1 auto;
-    }
-    .presence-bar .dot{
-      width:6px;height:6px;border-radius:999px;
-      background: rgba(77,163,255,.9);
+    .presence-avatar{
+      width:34px;
+      height:34px;
+      border-radius:50%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:14px;
+      font-weight:700;
+      position:relative;
       flex:0 0 auto;
+      user-select:none;
     }
-
+    .presence-avatar.online{
+      background:#4da3ff;
+      color:#fff;
+    }
+    .presence-avatar.offline{
+      background:#6b7280;
+      color:#fff;
+      opacity:.65;
+    }
+    /* ✅ 접속 상태 점 (인스타 느낌) */
+    .presence-avatar::before{
+      content:"";
+      position:absolute;
+      right:-2px;
+      bottom:-2px;
+      width:10px;
+      height:10px;
+      border-radius:50%;
+      border:2px solid var(--panel, #11141a);
+      background:#9ca3af;
+    }
+    .presence-avatar.online::before{
+      background:#22c55e;
+    }
+    .presence-avatar:hover::after{
+      content:attr(data-label);
+      position:absolute;
+      left:50%;
+      bottom:-34px;
+      transform:translateX(-50%);
+      background:#000;
+      color:#fff;
+      padding:4px 8px;
+      border-radius:8px;
+      font-size:11px;
+      white-space:nowrap;
+      pointer-events:none;
+      z-index:50;
+    }
 
     @media (max-width: 480px) {
       .wrap { padding: 10px 10px 16px; }
@@ -327,7 +364,7 @@
     .modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,.55);
+      background: rgba(0,0,0,55);
       display: none;
       align-items: center;
       justify-content: center;
@@ -375,9 +412,7 @@
       </div>
 
       <div class="presence-bar">
-        <span class="dot" aria-hidden="true"></span>
-        <span class="label">최근 접속자</span>
-        <div id="presenceList" class="list">-</div>
+        <div id="presenceList" class="presence-avatars"></div>
       </div>
 
       <div class="chat-box">
@@ -424,6 +459,7 @@
     </div>
   </div>
 
+  <!-- ✅ 모달 -->
   <div id="modalBackdrop" class="modal-backdrop">
     <div class="modal">
       <h4 id="modalTitle">일정 추가</h4>
@@ -458,42 +494,108 @@
   </div>
 
   <script>
-    async function jget(url) {
-      const r = await fetch(url, { cache: "no-store" });
+    // =========================
+    // ✅ 공통 fetch helpers
+    // =========================
+    async function jget(url){
+      const r = await fetch(url, { credentials: "same-origin" });
       return await r.json();
     }
-    async function jpost(url, body) {
+    async function jpost(url, body){
       const r = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body || {}),
+        credentials: "same-origin",
       });
       return await r.json();
     }
-    async function jput(url, body) {
+    async function jdel(url){
+      const r = await fetch(url, { method: "DELETE", credentials: "same-origin" });
+      return await r.json();
+    }
+    async function jput(url, body){
       const r = await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body || {}),
+        credentials: "same-origin",
       });
-      return await r.json();
-    }
-    async function jdel(url) {
-      const r = await fetch(url, { method: "DELETE" });
       return await r.json();
     }
 
     // =========================
-    // ✅ 채팅 (늦게 뜨는 문제 개선)
-    // - 폴링 2초 -> 0.7초
-    // - send 성공 시 즉시 append
+    // ✅ 채팅
     // =========================
-    let lastChatId = 0;
     const chatBox = document.getElementById("chatMessages");
     const chatInput = document.getElementById("chatInput");
     const chatSender = document.getElementById("chatSender");
     const sendBtn = document.getElementById("sendBtn");
+
     const CHAT_ROOM = "main";
+    let lastChatId = 0;
+
+    function updateChatEnabled(){
+      const nameOk = (chatSender.value || "").trim().length > 0;
+      sendBtn.disabled = !nameOk;
+      chatInput.disabled = !nameOk;
+    }
+
+    function formatChatTime(iso){
+      if (!iso) return "";
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString("ko-KR", { hour12: true, month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
+      } catch(e){
+        return "";
+      }
+    }
+
+    function appendMsg(m){
+      const me = (m.client_id && m.client_id === CLIENT_ID);
+
+      const wrap = document.createElement("div");
+      wrap.className = "msg" + (me ? " me" : "");
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.innerHTML = `<b>${escapeHtml(m.sender || "익명")}</b><br>${escapeHtml(m.message || "")}`;
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = formatChatTime(m.created_at);
+
+      const col = document.createElement("div");
+      col.appendChild(bubble);
+      col.appendChild(meta);
+
+      wrap.appendChild(col);
+      chatBox.appendChild(wrap);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    async function pollChatOnce(){
+      const data = await jget(`/api/chat/messages?room=${encodeURIComponent(CHAT_ROOM)}&after_id=${lastChatId}`);
+      if (data && data.ok && Array.isArray(data.messages)) {
+        for (const m of data.messages) {
+          appendMsg(m);
+          lastChatId = Math.max(lastChatId, m.id);
+        }
+      }
+    }
+
+    let chatPollTimer = null;
+    async function pollChat(){
+      if (chatPollTimer) clearTimeout(chatPollTimer);
+
+      if (document.hidden) {
+        chatPollTimer = setTimeout(pollChat, 5000);
+        return;
+      }
+
+      try { await pollChatOnce(); } catch(e) {}
+      chatPollTimer = setTimeout(pollChat, 2000);
+    }
 
     // ✅ 브라우저/기기별 고유 ID (로그인 없이 "내 글" 구분)
     let CLIENT_ID = localStorage.getItem("chat_client_id");
@@ -504,6 +606,32 @@
         CLIENT_ID = (Date.now().toString(36) + Math.random().toString(36).slice(2));
       }
       localStorage.setItem("chat_client_id", CLIENT_ID);
+    }
+
+    // ✅ 기기/브라우저별 동물 별명 (client_id가 다르면 자동으로 구분되게)
+    const ANIMAL_KEY = "chat_animal_alias";
+    const ANIMALS = [
+      "고양이","강아지","토끼","여우","곰","사자","호랑이","판다","펭귄","돌고래",
+      "수달","코알라","기린","코끼리","치타","늑대","하마","알파카","다람쥐","고슴도치",
+      "앵무새","부엉이","독수리","거북이","악어","참새","두더지","너구리","햄스터","라쿤"
+    ];
+    function _hash32(str){
+      let h = 2166136261;
+      for (let i=0;i<str.length;i++){
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return (h >>> 0);
+    }
+    let ANIMAL_ALIAS = localStorage.getItem(ANIMAL_KEY);
+    if (!ANIMAL_ALIAS) {
+      try {
+        const n = _hash32(CLIENT_ID);
+        ANIMAL_ALIAS = ANIMALS[n % ANIMALS.length];
+      } catch(e) {
+        ANIMAL_ALIAS = ANIMALS[Math.floor(Math.random()*ANIMALS.length)];
+      }
+      localStorage.setItem(ANIMAL_KEY, ANIMAL_ALIAS);
     }
 
     // ✅ 이름(보낸사람) 기기별 저장 (PC/폰 각각 유지)
@@ -519,149 +647,110 @@
     chatSender.addEventListener("change", saveName);
     chatSender.addEventListener("blur", saveName);
 
+    updateChatEnabled();
+
     // ✅ 최근 접속자(Presence)
     const presenceListEl = document.getElementById("presenceList");
     let presenceTimer = null;
     let presencePingTimer = null;
 
-    async function presencePing() {
+    async function presencePing(){
       try {
-        await jpost("/api/presence/ping", { client_id: CLIENT_ID, sender: (chatSender.value || "").trim() || "익명" });
-      } catch (e) {}
+        await jpost("/api/presence/ping", {
+          client_id: CLIENT_ID,
+          sender: (chatSender.value || "").trim() || "익명",
+          animal: ANIMAL_ALIAS
+        });
+      } catch(e) {}
     }
 
-    async function presenceRefresh() {
+    function formatPresenceTime(iso){
+      if (!iso) return "";
       try {
-        const data = await jget("/api/presence/list?minutes=5");
+        const diffMin = Math.floor((Date.now() - new Date(iso)) / 60000);
+
+        // ✅ 최근 2분 이내: 접속중
+        if (diffMin < 2) return "접속중";
+
+        // ✅ 1~59분: n분전
+        if (diffMin < 60) return `${diffMin}분전`;
+
+        // ✅ 1~23시간: n시간전
+        const h = Math.floor(diffMin / 60);
+        if (h < 24) return `${h}시간전`;
+
+        // ✅ 24시간 이상: 1일전
+        return "1일전";
+      } catch(e){
+        return "";
+      }
+    }
+
+    async function presenceRefresh(){
+      try {
+        // ✅ 2~5명 소수 사용 기준: 하루치까지 가져와서 "n분전/n시간전/1일전" 표기
+        const data = await jget("/api/presence/list?minutes=1440");
         if (!data || !data.ok) return;
 
-        const names = (data.users || [])
-          .map(u => (u.sender || "").trim())
-          .filter(Boolean);
+        const users = (data.users || []).map(u => ({
+          client_id: (u.client_id || ""),
+          name: ((u.sender || "").trim()) || ((u.animal || "").trim()) || "익명",
+          last_seen: (u.last_seen || null),
+        }));
 
-        // 중복 이름 제거(표시만)
-        const uniq = [];
-        const seen = new Set();
-        for (const n of names) {
-          if (!seen.has(n)) { seen.add(n); uniq.push(n); }
-        }
+        // ✅ 최근 순으로 최대 8개만
+        const slice = users.slice(0, 8);
 
-        presenceListEl.textContent = uniq.length ? uniq.join(", ") : "-";
-      } catch (e) {}
+        const frag = document.createDocumentFragment();
+        slice.forEach(u => {
+          const state = formatPresenceTime(u.last_seen);
+          const online = (state === "접속중");
+
+          const el = document.createElement("div");
+          el.className = "presence-avatar " + (online ? "online" : "offline");
+          el.textContent = (u.name || "익명").charAt(0);
+          el.setAttribute("data-label", `${u.name} · ${state}`);
+          frag.appendChild(el);
+        });
+
+        presenceListEl.innerHTML = "";
+        presenceListEl.appendChild(frag);
+        if (!slice.length) presenceListEl.textContent = "-";
+      } catch(e) {}
     }
 
-    function startPresence() {
+    function startPresence(){
       if (presencePingTimer) clearInterval(presencePingTimer);
       if (presenceTimer) clearInterval(presenceTimer);
 
       presencePing();
       presenceRefresh();
 
-      // 20초마다 접속 유지 신호
+      // 30초마다 접속 유지 신호
       presencePingTimer = setInterval(() => {
         if (!document.hidden) presencePing();
-      }, 20000);
+      }, 30000);
 
-      // 10초마다 목록 갱신
+      // 15초마다 목록 갱신
       presenceTimer = setInterval(() => {
         if (!document.hidden) presenceRefresh();
-      }, 10000);
+      }, 15000);
     }
 
-    function escapeHtml(s) {
+    function escapeHtml(s){
       return (s || "").replace(/[&<>"']/g, (c) => ({
         "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
       }[c]));
     }
 
-    function formatChatTime(iso) {
-      if (!iso) return "";
-      try {
-        const d = new Date(iso);
-        const parts = new Intl.DateTimeFormat("en-US", {
-          timeZone: "Asia/Seoul",
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true
-        }).formatToParts(d);
-
-        const get = (t) => (parts.find(p => p.type === t)?.value || "");
-        const y = get("year");
-        const mo = get("month");
-        const da = get("day");
-        const hourRaw = get("hour");
-        const mi = get("minute");
-        const dayPeriod = (get("dayPeriod") || "").toLowerCase(); // am/pm
-        const h = String(parseInt(hourRaw || "0", 10)); // remove leading 0
-
-        return `-${y}-${mo}-${da} ${dayPeriod}${h}:${mi}`;
-      } catch (e) {
-        return iso;
-      }
-    }
-
-    function setSpinning(btn, on) {
-      if (!btn) return;
-      if (on) btn.classList.add("spinning");
-      else btn.classList.remove("spinning");
-    }
-
-    function appendMsg(m) {
-      const wrap = document.createElement("div");
-      wrap.className = (m && m.client_id && m.client_id === CLIENT_ID) ? "msg me" : "msg";
-
-      const bubble = document.createElement("div");
-      bubble.className = "bubble";
-      bubble.innerHTML = `<b>${escapeHtml(m.sender || "익명")}</b><div style="height:6px"></div>${escapeHtml(m.message)}`;
-
-      const meta = document.createElement("div");
-      meta.className = "meta";
-      meta.textContent = formatChatTime(m.created_at);
-
-      const col = document.createElement("div");
-      col.appendChild(bubble);
-      col.appendChild(meta);
-
-      wrap.appendChild(col);
-      chatBox.appendChild(wrap);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
-
-    async function pollChatOnce() {
-      const data = await jget(`/api/chat/messages?room=${encodeURIComponent(CHAT_ROOM)}&after_id=${lastChatId}`);
-      if (data && data.ok && Array.isArray(data.messages)) {
-        for (const m of data.messages) {
-          appendMsg(m);
-          lastChatId = Math.max(lastChatId, m.id);
-        }
-      }
-    }
-
-    let chatPollTimer = null;
-
-    async function pollChat() {
-      if (chatPollTimer) clearTimeout(chatPollTimer);
-
-      if (document.hidden) {
-        chatPollTimer = setTimeout(pollChat, 5000);
-        return;
-      }
-
-      try { await pollChatOnce(); } catch (e) {}
-
-      chatPollTimer = setTimeout(pollChat, 2000);
-    }
-
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) pollChat();
-
-    startPresence();
+      if (!document.hidden) {
+        pollChat();
+        startPresence();
+      }
     });
 
-    async function sendChat() {
+    async function sendChat(){
       saveName();
       const sender = (chatSender.value || "익명").trim();
       const message = (chatInput.value || "").trim();
@@ -682,11 +771,10 @@
           // 실패하면 한 번 더 폴링
           await pollChatOnce();
         }
-      } catch (e) {
-        try { await pollChatOnce(); } catch (e2) {}
+      } catch(e){
+        try { await pollChatOnce(); } catch(e2) {}
       } finally {
-        sendBtn.disabled = false;
-        chatInput.disabled = false;
+        updateChatEnabled();
         chatInput.focus();
       }
     }
@@ -850,28 +938,39 @@
       calendar.render();
     }
 
+
+    // ✅ FullCalendar init
+
+    // ✅ FullCalendar init
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    await initCalendar();
+
+    // ✅ 채팅 시작
     pollChat();
-
     startPresence();
-    initCalendar();
 
-  const refreshMemosBtn = document.getElementById("refreshMemosBtn");
-  if (refreshMemosBtn) {
-    refreshMemosBtn.addEventListener("click", () => {
-      setSpinning(refreshMemosBtn, true);
-      // 화면이 바로 이동되기 전에 아이콘이 조금이라도 돌아가게 딜레이
-      setTimeout(() => window.location.reload(), 60);
+    // ✅ 새로고침 버튼
+    document.getElementById("refreshCalendarBtn")?.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const btn = document.getElementById("refreshCalendarBtn");
+      if (btn) btn.classList.add("spinning");
+      try { if (calendar) calendar.refetchEvents(); } catch(e2) {}
+      setTimeout(() => { if (btn) btn.classList.remove("spinning"); }, 800);
     });
-  }
 
-  const refreshCalendarBtn = document.getElementById("refreshCalendarBtn");
-  if (refreshCalendarBtn) {
-    refreshCalendarBtn.addEventListener("click", () => {
-      setSpinning(refreshCalendarBtn, true);
-      if (calendar) calendar.refetchEvents();
-      setTimeout(() => setSpinning(refreshCalendarBtn, false), 800);
-    });
-  }
-  </script>
+  } catch(e) {}
+});
+  
+// ✅ 메모 새로고침(그대로 유지)
+const refreshMemosBtn = document.getElementById("refreshMemosBtn");
+if (refreshMemosBtn) {
+  refreshMemosBtn.addEventListener("click", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    refreshMemosBtn.classList.add("spinning");
+    setTimeout(() => window.location.reload(), 60);
+  });
+}
+</script>
 </body>
 </html>
