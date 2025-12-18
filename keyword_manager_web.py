@@ -71,8 +71,7 @@ def ensure_db():
                     )
                     """
                 )
-
-                # ✅ 채팅 client_id 컬럼 (브라우저/기기별 식별용)
+                # ✅ client_id 컬럼이 없으면 추가 (내/남 구분)
                 cur.execute(
                     """
                     select 1
@@ -82,7 +81,6 @@ def ensure_db():
                 )
                 if cur.fetchone() is None:
                     cur.execute("alter table chat_messages add column client_id text")
-
 
                 # calendar_events
                 cur.execute(
@@ -99,9 +97,20 @@ def ensure_db():
                     """
                 )
 
+                # ✅ presence (최근 접속자)
+                cur.execute(
+                    """
+                    create table if not exists presence(
+                        client_id text primary key,
+                        sender text,
+                        last_seen timestamptz not null default now(),
+                        user_agent text
+                    )
+                    """
+                )
+
             conn.commit()
         _DB_READY = True
-
 def _ensure_calendar_events_columns(cur):
     cur.execute("select column_name from information_schema.columns where table_schema='public' and table_name='calendar_events'")
     cols = {r[0] for r in cur.fetchall()}
@@ -411,6 +420,7 @@ def send_chat():
 
     room = (data.get("room") or "main").strip() or "main"
     sender = (data.get("sender") or "익명").strip()
+    client_id = (data.get("client_id") or "").strip() or None
     message = (data.get("message") or "").strip()
     client_id = (data.get("client_id") or "").strip() or None
     if not message:
@@ -431,7 +441,75 @@ def send_chat():
             msg_id = cur.fetchone()[0]
         conn.commit()
 
-    return jsonify({"ok": True, "id": msg_id, "created_at": now.isoformat()})
+    return jsonify({"ok": True, "id": msg_id, "created_at": now.isoformat(), "client_id": client_id})
+
+
+# ===============================
+# ✅ 최근 접속자(Presence) API
+# ===============================
+@app.route("/api/presence/ping", methods=["POST"])
+def presence_ping():
+    ensure_db()
+    data = request.get_json(silent=True) or {}
+    client_id = (data.get("client_id") or "").strip()
+    sender = (data.get("sender") or "").strip() or None
+    if not client_id:
+        return jsonify({"ok": False, "error": "no_client_id"}), 400
+
+    ua = request.headers.get("User-Agent", "")
+    now = _now()
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into presence (client_id, sender, last_seen, user_agent)
+                values (%s, %s, %s, %s)
+                on conflict (client_id) do update
+                set sender = excluded.sender,
+                    last_seen = excluded.last_seen,
+                    user_agent = excluded.user_agent
+                """,
+                (client_id, sender, now, ua),
+            )
+        conn.commit()
+
+    return jsonify({"ok": True, "last_seen": now.isoformat()})
+
+@app.route("/api/presence/list", methods=["GET"])
+def presence_list():
+    ensure_db()
+    try:
+        minutes = int(request.args.get("minutes", "5"))
+    except Exception:
+        minutes = 5
+    if minutes < 1:
+        minutes = 1
+    if minutes > 60:
+        minutes = 60
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select client_id, sender, last_seen
+                from presence
+                where last_seen >= (now() - (%s || ' minutes')::interval)
+                order by last_seen desc
+                limit 30
+                """,
+                (minutes,),
+            )
+            rows = cur.fetchall()
+
+    return jsonify({
+        "ok": True,
+        "minutes": minutes,
+        "users": [
+            {"client_id": r[0], "sender": r[1] or "", "last_seen": r[2].isoformat() if r[2] else None}
+            for r in rows
+        ]
+    })
 
 if __name__ == "__main__":
     ensure_db()
