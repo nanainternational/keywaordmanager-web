@@ -329,7 +329,7 @@
       background:#9ca3af;
     }
     .presence-avatar.online::before{
-      background:#22c55e;
+      background:#4da3ff;
     }
     .presence-avatar:hover::after{
       content:attr(data-label);
@@ -546,8 +546,6 @@
         CLIENT_ID = (Date.now().toString(36) + Math.random().toString(36).slice(2));
       }
       localStorage.setItem("chat_client_id", CLIENT_ID);
-    }
-
     // ✅ 기기/브라우저별 동물 별명 (client_id가 다르면 자동으로 구분되게)
     const ANIMAL_KEY = "chat_animal_alias";
     const ANIMALS = [
@@ -574,8 +572,9 @@
       localStorage.setItem(ANIMAL_KEY, ANIMAL_ALIAS);
     }
 
+    }
+
     // ✅ 이름(보낸사람) 기기별 저장 (PC/폰 각각 유지)
- 기기별 저장 (PC/폰 각각 유지)
     const NAME_KEY = "chat_sender_name";
     const savedName = localStorage.getItem(NAME_KEY);
     if (savedName && savedName.trim()) {
