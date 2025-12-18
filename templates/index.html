@@ -500,6 +500,32 @@
         CLIENT_ID = (Date.now().toString(36) + Math.random().toString(36).slice(2));
       }
       localStorage.setItem("chat_client_id", CLIENT_ID);
+    // ✅ 기기/브라우저별 동물 별명 (client_id가 다르면 자동으로 구분되게)
+    const ANIMAL_KEY = "chat_animal_alias";
+    const ANIMALS = [
+      "고양이","강아지","토끼","여우","곰","사자","호랑이","판다","펭귄","돌고래",
+      "수달","코알라","기린","코끼리","치타","늑대","하마","알파카","다람쥐","고슴도치",
+      "앵무새","부엉이","독수리","거북이","악어","참새","두더지","너구리","햄스터","라쿤"
+    ];
+    function _hash32(str){
+      let h = 2166136261;
+      for (let i=0;i<str.length;i++){
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return (h >>> 0);
+    }
+    let ANIMAL_ALIAS = localStorage.getItem(ANIMAL_KEY);
+    if (!ANIMAL_ALIAS) {
+      try {
+        const n = _hash32(CLIENT_ID);
+        ANIMAL_ALIAS = ANIMALS[n % ANIMALS.length];
+      } catch(e) {
+        ANIMAL_ALIAS = ANIMALS[Math.floor(Math.random()*ANIMALS.length)];
+      }
+      localStorage.setItem(ANIMAL_KEY, ANIMAL_ALIAS);
+    }
+
     }
 
     // ✅ 이름(보낸사람) 기기별 저장 (PC/폰 각각 유지)
@@ -522,7 +548,7 @@
 
     async function presencePing() {
       try {
-        await jpost("/api/presence/ping", { client_id: CLIENT_ID, sender: (chatSender.value || "").trim() || "익명" });
+        await jpost("/api/presence/ping", { client_id: CLIENT_ID, sender: (chatSender.value || "").trim() || "익명", animal: ANIMAL_ALIAS });
       } catch (e) {}
     }
 
@@ -531,18 +557,30 @@
         const data = await jget("/api/presence/list?minutes=5");
         if (!data || !data.ok) return;
 
-        const names = (data.users || [])
-          .map(u => (u.sender || "").trim())
-          .filter(Boolean);
+        const users = (data.users || []).map(u => ({
+          client_id: (u.client_id || ""),
+          sender: ((u.sender || "").trim()),
+          animal: ((u.animal || "").trim()),
+          last_seen: (u.last_seen || null)
+        }));
 
-        // 중복 이름 제거(표시만)
-        const uniq = [];
-        const seen = new Set();
-        for (const n of names) {
-          if (!seen.has(n)) { seen.add(n); uniq.push(n); }
+        // sender 중복이면 동물 별명으로 구분 (client_id 기준으로는 각자 1명)
+        const counts = {};
+        for (const u of users) {
+          const key = u.sender || "";
+          if (!key) continue;
+          counts[key] = (counts[key] || 0) + 1;
         }
 
-        presenceListEl.textContent = uniq.length ? uniq.join(", ") : "-";
+        const labels = users.map(u => {
+          const s = u.sender;
+          const a = u.animal || "동물";
+          if (!s) return a; // 이름이 없으면 동물로 표시
+          if ((counts[s] || 0) >= 2) return `${s}(${a})`; // 중복이면 구분자 추가
+          return s;
+        });
+
+        presenceListEl.textContent = labels.length ? labels.join(", ") : "-";
       } catch (e) {}
     }
 
