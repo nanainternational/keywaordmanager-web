@@ -1,8 +1,6 @@
 <!doctype html>
 <html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <!-- ✅ 모바일 입력창 눌렀을 때 확대(줌) 방지 -->
+<head>  <!-- ✅ 모바일 입력창 눌렀을 때 확대(줌) 방지 -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 
   <title>Keyword Manager Web</title>
@@ -91,6 +89,27 @@
       font-weight: 600;
       white-space: nowrap;
       flex: 0 0 auto;
+    }
+
+    .mini.icon-btn{
+      width: 38px;
+      padding: 7px 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .refresh-icon{
+      display: inline-block;
+      font-size: 16px;
+      line-height: 1;
+      transform-origin: 50% 50%;
+    }
+    .spinning .refresh-icon{
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin{
+      from{ transform: rotate(0deg); }
+      to{ transform: rotate(360deg); }
     }
 
     /* ✅ 채팅 */
@@ -325,7 +344,7 @@
     <div class="section">
       <div class="section-title">
         <h3>메모</h3>
-        <button class="mini" id="refreshMemosBtn" type="button">새로고침</button>
+        <button class="mini icon-btn" id="refreshMemosBtn" type="button" aria-label="새로고침"><span class="refresh-icon" aria-hidden="true">⟳</span></button>
       </div>
 
       <form method="POST" class="memo-row">
@@ -349,7 +368,7 @@
     <div class="calendar-wrap">
       <div class="section-title" style="margin: 6px 2px 10px;">
         <h3>캘린더</h3>
-        <button class="mini" id="refreshCalendarBtn" type="button">새로고침</button>
+        <button class="mini icon-btn" id="refreshCalendarBtn" type="button" aria-label="새로고침"><span class="refresh-icon" aria-hidden="true">⟳</span></button>
       </div>
       <div id="calendar"></div>
     </div>
@@ -432,6 +451,41 @@
       }[c]));
     }
 
+    function formatChatTime(iso) {
+      if (!iso) return "";
+      try {
+        const d = new Date(iso);
+        const parts = new Intl.DateTimeFormat("en-US", {
+          timeZone: "Asia/Seoul",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true
+        }).formatToParts(d);
+
+        const get = (t) => (parts.find(p => p.type === t)?.value || "");
+        const y = get("year");
+        const mo = get("month");
+        const da = get("day");
+        const hourRaw = get("hour");
+        const mi = get("minute");
+        const dayPeriod = (get("dayPeriod") || "").toLowerCase(); // am/pm
+        const h = String(parseInt(hourRaw || "0", 10)); // remove leading 0
+
+        return `-${y}-${mo}-${da} ${dayPeriod}${h}:${mi}`;
+      } catch (e) {
+        return iso;
+      }
+    }
+
+    function setSpinning(btn, on) {
+      if (!btn) return;
+      if (on) btn.classList.add("spinning");
+      else btn.classList.remove("spinning");
+    }
+
     function appendMsg(m) {
       const wrap = document.createElement("div");
       wrap.className = "msg";
@@ -442,7 +496,7 @@
 
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = m.created_at || "";
+      meta.textContent = formatChatTime(m.created_at);
 
       const col = document.createElement("div");
       col.appendChild(bubble);
@@ -675,13 +729,19 @@
 
   const refreshMemosBtn = document.getElementById("refreshMemosBtn");
   if (refreshMemosBtn) {
-    refreshMemosBtn.addEventListener("click", () => window.location.reload());
+    refreshMemosBtn.addEventListener("click", () => {
+      setSpinning(refreshMemosBtn, true);
+      // 화면이 바로 이동되기 전에 아이콘이 조금이라도 돌아가게 딜레이
+      setTimeout(() => window.location.reload(), 60);
+    });
   }
 
   const refreshCalendarBtn = document.getElementById("refreshCalendarBtn");
   if (refreshCalendarBtn) {
     refreshCalendarBtn.addEventListener("click", () => {
+      setSpinning(refreshCalendarBtn, true);
       if (calendar) calendar.refetchEvents();
+      setTimeout(() => setSpinning(refreshCalendarBtn, false), 800);
     });
   }
   </script>
