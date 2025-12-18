@@ -7,7 +7,7 @@ import requests
 from bs4 import BeautifulSoup
 from flask import Flask, request, jsonify, render_template
 
-# ✅ psycopg (v3) 사용: Python 3.13에서 psycopg2 바이너리 호환 이슈 회피
+# ✅ Python 3.13 호환: psycopg(v3)
 import psycopg
 
 app = Flask(__name__)
@@ -21,23 +21,40 @@ try:
 except Exception:
     TZ = None
 
+def _now():
+    return datetime.now(TZ) if TZ else datetime.now()
+
 # ===============================
 # ✅ DB
 # ===============================
 _DB_READY = False
 _DB_LOCK = threading.Lock()
 
-def _now():
-    if TZ:
-        return datetime.now(TZ)
-    return datetime.now()
-
 def get_conn():
     db_url = (os.environ.get("DATABASE_URL") or "").strip()
     if not db_url:
         raise RuntimeError("DATABASE_URL not set")
-    # psycopg v3
     return psycopg.connect(db_url, connect_timeout=10)
+
+def _ensure_columns(cur):
+    # chat_messages: client_id 컬럼
+    cur.execute("""
+        select 1
+        from information_schema.columns
+        where table_schema='public' and table_name='chat_messages' and column_name='client_id'
+    """)
+    if cur.fetchone() is None:
+        cur.execute("alter table chat_messages add column client_id text")
+
+    # presence 테이블
+    cur.execute("""
+        create table if not exists presence(
+            client_id text primary key,
+            sender text,
+            last_seen timestamptz not null default now(),
+            user_agent text
+        )
+    """)
 
 def ensure_db():
     global _DB_READY
@@ -71,16 +88,6 @@ def ensure_db():
                     )
                     """
                 )
-                # ✅ client_id 컬럼이 없으면 추가 (내/남 구분)
-                cur.execute(
-                    """
-                    select 1
-                    from information_schema.columns
-                    where table_schema='public' and table_name='chat_messages' and column_name='client_id'
-                    """
-                )
-                if cur.fetchone() is None:
-                    cur.execute("alter table chat_messages add column client_id text")
 
                 # calendar_events
                 cur.execute(
@@ -97,26 +104,11 @@ def ensure_db():
                     """
                 )
 
-                # ✅ presence (최근 접속자)
-                cur.execute(
-                    """
-                    create table if not exists presence(
-                        client_id text primary key,
-                        sender text,
-                        animal text,
-                        last_seen timestamptz not null default now(),
-                        user_agent text
-                    )
-                    """
-                )
-                # 기존 테이블 호환: 컬럼 누락 시 추가
-                cur.execute("alter table presence add column if not exists sender text")
-                cur.execute("alter table presence add column if not exists animal text")
-                cur.execute("alter table presence add column if not exists last_seen timestamptz not null default now()")
-                cur.execute("alter table presence add column if not exists user_agent text")
+                _ensure_columns(cur)
 
             conn.commit()
         _DB_READY = True
+
 def _ensure_calendar_events_columns(cur):
     cur.execute("select column_name from information_schema.columns where table_schema='public' and table_name='calendar_events'")
     cols = {r[0] for r in cur.fetchall()}
@@ -176,14 +168,14 @@ def get_adjusted_exchange_rate():
     return _cached_rate["value"]
 
 # ===============================
-# ✅ Health (UptimeRobot)
+# ✅ Health
 # ===============================
 @app.route("/health", methods=["GET", "HEAD"])
 def health():
     return ("", 200)
 
 # ===============================
-# ✅ 메인 페이지
+# ✅ 메인
 # ===============================
 @app.route("/", methods=["GET", "POST", "HEAD"])
 def index():
@@ -210,7 +202,6 @@ def index():
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # ✅ 최신 메모가 위로
             cur.execute("select content from memos order by id desc")
             memo_list = [r[0] for r in cur.fetchall()]
 
@@ -385,6 +376,66 @@ def delete_event(event_id):
     return jsonify({"ok": True})
 
 # ===============================
+# ✅ Presence API
+# ===============================
+@app.route("/api/presence/ping", methods=["POST"])
+def presence_ping():
+    ensure_db()
+    data = request.get_json(silent=True) or {}
+    client_id = (data.get("client_id") or "").strip()
+    sender = (data.get("sender") or "").strip()
+    ua = request.headers.get("User-Agent", "")[:300]
+
+    if not client_id:
+        return jsonify({"ok": False, "error": "client_id required"}), 400
+
+    now = _now()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _ensure_columns(cur)
+            cur.execute(
+                """
+                insert into presence (client_id, sender, last_seen, user_agent)
+                values (%s, %s, %s, %s)
+                on conflict (client_id)
+                do update set sender = excluded.sender, last_seen = excluded.last_seen, user_agent = excluded.user_agent
+                """,
+                (client_id, sender, now, ua),
+            )
+        conn.commit()
+
+    return jsonify({"ok": True})
+
+@app.route("/api/presence/list", methods=["GET"])
+def presence_list():
+    ensure_db()
+    try:
+        minutes = int(request.args.get("minutes", 5))
+    except Exception:
+        minutes = 5
+    minutes = max(1, min(minutes, 60))
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _ensure_columns(cur)
+            # ✅ 이름이 비어있는 경우는 최근접속자에서 제외
+            cur.execute(
+                """
+                select client_id, sender, last_seen
+                from presence
+                where sender is not null and sender <> ''
+                  and last_seen >= (now() - (%s || ' minutes')::interval)
+                order by last_seen desc
+                limit 30
+                """,
+                (minutes,),
+            )
+            rows = cur.fetchall()
+
+    out = [{"client_id": r[0], "sender": r[1], "last_seen": r[2].isoformat() if r[2] else None} for r in rows]
+    return jsonify({"ok": True, "users": out})
+
+# ===============================
 # ✅ 채팅 API
 # ===============================
 @app.route("/api/chat/messages", methods=["GET"])
@@ -398,6 +449,7 @@ def chat_messages():
 
     with get_conn() as conn:
         with conn.cursor() as cur:
+            _ensure_columns(cur)
             cur.execute(
                 """
                 select id, sender, message, created_at, client_id
@@ -413,7 +465,13 @@ def chat_messages():
         {
             "ok": True,
             "messages": [
-                {"id": r[0], "sender": r[1], "message": r[2], "created_at": r[3].isoformat() if r[3] else None, "client_id": r[4]}
+                {
+                    "id": r[0],
+                    "sender": r[1],
+                    "message": r[2],
+                    "created_at": r[3].isoformat() if r[3] else None,
+                    "client_id": r[4] or "",
+                }
                 for r in rows
             ],
         }
@@ -425,10 +483,14 @@ def send_chat():
     data = request.get_json(silent=True) or {}
 
     room = (data.get("room") or "main").strip() or "main"
-    sender = (data.get("sender") or "익명").strip()
-    client_id = (data.get("client_id") or "").strip() or None
+    sender = (data.get("sender") or "").strip()
     message = (data.get("message") or "").strip()
-    client_id = (data.get("client_id") or "").strip() or None
+    client_id = (data.get("client_id") or "").strip()
+
+    if not client_id:
+        return jsonify({"ok": False, "error": "client_id required"}), 400
+    if not sender:
+        return jsonify({"ok": False, "error": "sender_required"}), 400
     if not message:
         return jsonify({"ok": False, "error": "empty_message"}), 400
 
@@ -436,6 +498,7 @@ def send_chat():
 
     with get_conn() as conn:
         with conn.cursor() as cur:
+            _ensure_columns(cur)
             cur.execute(
                 """
                 insert into chat_messages (room, sender, message, created_at, client_id)
@@ -447,77 +510,7 @@ def send_chat():
             msg_id = cur.fetchone()[0]
         conn.commit()
 
-    return jsonify({"ok": True, "id": msg_id, "created_at": now.isoformat(), "client_id": client_id})
-
-
-# ===============================
-# ✅ 최근 접속자(Presence) API
-# ===============================
-@app.route("/api/presence/ping", methods=["POST"])
-def presence_ping():
-    ensure_db()
-    data = request.get_json(silent=True) or {}
-    client_id = (data.get("client_id") or "").strip()
-    sender = (data.get("sender") or "").strip() or None
-    animal = (data.get("animal") or "").strip() or None
-    if not client_id:
-        return jsonify({"ok": False, "error": "no_client_id"}), 400
-
-    ua = request.headers.get("User-Agent", "")
-    now = _now()
-
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                insert into presence (client_id, sender, animal, last_seen, user_agent)
-                values (%s, %s, %s, %s, %s)
-                on conflict (client_id) do update
-                set sender = coalesce(excluded.sender, presence.sender),
-                    animal = coalesce(excluded.animal, presence.animal),
-                    last_seen = excluded.last_seen,
-                    user_agent = excluded.user_agent
-                """,
-                (client_id, sender, animal, now, ua),
-            )
-        conn.commit()
-
-    return jsonify({"ok": True, "last_seen": now.isoformat()})
-
-@app.route("/api/presence/list", methods=["GET"])
-def presence_list():
-    ensure_db()
-    try:
-        minutes = int(request.args.get("minutes", "5"))
-    except Exception:
-        minutes = 5
-    if minutes < 1:
-        minutes = 1
-    if minutes > 60:
-        minutes = 60
-
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                select client_id, sender, animal, last_seen
-                from presence
-                where last_seen >= (now() - (%s || ' minutes')::interval)
-                order by last_seen desc
-                limit 30
-                """,
-                (minutes,),
-            )
-            rows = cur.fetchall()
-
-    return jsonify({
-        "ok": True,
-        "minutes": minutes,
-        "users": [
-            {"client_id": r[0], "sender": (r[1] or ""), "animal": (r[2] or ""), "last_seen": r[3].isoformat() if r[3] else None}
-            for r in rows
-        ]
-    })
+    return jsonify({"ok": True, "id": msg_id, "created_at": now.isoformat()})
 
 if __name__ == "__main__":
     ensure_db()
