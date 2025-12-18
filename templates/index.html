@@ -278,78 +278,42 @@
     .ev-title { overflow: hidden; text-overflow: ellipsis; }
     .ev-time { opacity: .75; flex: 0 0 auto; }
     .presence-bar{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  margin: 0 0 10px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  background: rgba(255,255,255,.04);
-  border: 1px solid var(--line);
+      display:flex;
+      align-items:center;
+      gap:8px;
+      margin: 0 0 10px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+    }
+    .presence-bar .label{
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 300;
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .presence-bar .list{
+      font-size: 12px;
+      font-weight: 300;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1 1 auto;
+    }
+    .presence-bar .dot{
+  width:6px;height:6px;border-radius:999px;
+  background: rgba(160,160,160,.9);
+  flex:0 0 auto;
 }
-.presence-bar .label{
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 300;
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-/* ✅ 인스타그램 느낌 원형 + 상태 점 */
-.presence-avatars{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  overflow:hidden;
-  flex: 1 1 auto;
-}
-.presence-avatar{
-  width:34px;
-  height:34px;
-  border-radius:999px;
-  background: rgba(255,255,255,.08);
-  border: 1px solid rgba(255,255,255,.10);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size: 13px;
-  font-weight: 600;
-  position: relative;
-  flex: 0 0 auto;
-  user-select: none;
-}
-.presence-avatar .status-dot{
-  position:absolute;
-  right:-1px;
-  bottom:-1px;
-  width:10px;
-  height:10px;
-  border-radius:999px;
-  border: 2px solid var(--panel);
-  background: rgba(255,255,255,.30);
-}
-.presence-avatar.online .status-dot{
-  background: rgba(77,163,255,.95); /* 파란 점 */
-}
-.presence-avatar.offline .status-dot{
-  background: rgba(255,255,255,.35); /* 회색 점 */
-}
-.presence-avatar:hover::after{
-  content: attr(data-label);
-  position: absolute;
-  left: 50%;
-  bottom: -34px;
-  transform: translateX(-50%);
-  background: rgba(0,0,0,.85);
-  border: 1px solid rgba(255,255,255,.12);
-  color: rgba(255,255,255,.92);
-  padding: 5px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  white-space: nowrap;
-  pointer-events: none;
-  z-index: 20;
-}
-@media (max-width: 480px) {
+.dot.dot-on{ background: rgba(46,204,113,.95); }
+.dot.dot-off{ background: rgba(160,160,160,.9); }
+.dot.dot-me{ background: rgba(77,163,255,.95); }
+
+
+    @media (max-width: 480px) {
       .wrap { padding: 10px 10px 16px; }
       .chat-input-row { grid-template-columns: 76px 1fr 66px; }
       .chat-box { height: 200px; }
@@ -412,7 +376,7 @@
       <div class="presence-bar">
         <span class="dot" aria-hidden="true"></span>
         <span class="label">최근 접속자</span>
-        <div id="presenceList" class="presence-avatars"></div>
+        <div id="presenceList" class="list">-</div>
       </div>
 
       <div class="chat-box">
@@ -580,84 +544,120 @@
     chatSender.addEventListener("change", saveName);
     chatSender.addEventListener("blur", saveName);
 
+// ✅ 이름 없으면 채팅 잠금 + Presence Ping 보류
+function setChatEnabled(on) {
+  chatInput.disabled = !on;
+  chatSendBtn.disabled = !on;
+  chatInput.placeholder = on ? "메시지 입력..." : "이름을 먼저 입력하세요";
+}
+
+function ensureNameAndStart() {
+  const v = (chatSender.value || "").trim();
+  if (!v) {
+    setChatEnabled(false);
+    return false;
+  }
+  setChatEnabled(true);
+  if (!presencePingTimer) {
+    presencePing();
+    }
+  return true;
+}
+
+chatSender.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    saveName();
+    ensureNameAndStart();
+    chatInput.focus();
+  }
+});
+
+// 로드시 적용
+setChatEnabled(false);
+ensureNameAndStart();
+
     // ✅ 최근 접속자(Presence)
     const presenceListEl = document.getElementById("presenceList");
     let presenceTimer = null;
     let presencePingTimer = null;
 
     async function presencePing() {
-      try {
-        await jpost("/api/presence/ping", { client_id: CLIENT_ID, sender: (chatSender.value || "").trim() || "익명", animal: ANIMAL_ALIAS });
-      } catch (e) {}
-    }
-
-    
-function formatPresenceLabel(iso) {
-  if (!iso) return "";
   try {
-    const diffMin = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-
-    if (diffMin < 2) return "접속중";
-    if (diffMin < 60) return `${diffMin}분전`;
-
-    const h = Math.floor(diffMin / 60);
-    if (h < 24) return `${h}시간전`;
-
-    return "1일전";
-  } catch (e) {
-    return "";
-  }
-}
-
-async function presenceRefresh() {
-  try {
-    // ✅ 24시간 범위에서 가져오고(어차피 2~5명), 화면에서는 sender 기준으로 중복 제거
-    const data = await jget("/api/presence/list?minutes=1440");
-    if (!data || !data.ok) return;
-
-    const users = Array.isArray(data.users) ? data.users : [];
-
-    // ✅ sender(이름) 기준으로 최신 1개만 남김 (같은 사람이 여러 탭/기기면 1개로)
-    const seen = new Set();
-    const picked = [];
-    for (const u of users) {
-      const sender = ((u.sender || "").trim()) || "익명";
-      if (seen.has(sender)) continue;
-      seen.add(sender);
-      picked.push({
-        sender,
-        last_seen: u.last_seen || null
-      });
-      if (picked.length >= 5) break; // 2~5명 내외
-    }
-
-    // ✅ 렌더
-    presenceListEl.innerHTML = "";
-    if (!picked.length) {
-      presenceListEl.textContent = "-";
-      return;
-    }
-
-    for (const p of picked) {
-      const name = p.sender;
-      const first = name.slice(0, 1) || "?";
-      const state = formatPresenceLabel(p.last_seen);
-      const online = state === "접속중";
-
-      const av = document.createElement("div");
-      av.className = "presence-avatar " + (online ? "online" : "offline");
-      av.setAttribute("data-label", `${name} · ${state}`);
-      av.textContent = first;
-
-      const dot = document.createElement("span");
-      dot.className = "status-dot";
-      dot.setAttribute("aria-hidden", "true");
-      av.appendChild(dot);
-
-      presenceListEl.appendChild(av);
-    }
+    await jpost("/api/presence/ping", {
+      client_id: CLIENT_ID,
+      sender: ((chatSender.value || "").trim() || "익명"),
+      animal: ANIMAL_ALIAS,
+    });
   } catch (e) {}
 }
+
+
+    async function presenceRefresh() {
+  try {
+    const minutes = 10;
+    const rows = await jget(`/api/presence/list?minutes=${minutes}`);
+    const list = Array.isArray(rows) ? rows : [];
+
+    const byId = new Map();
+    for (const r of list) {
+      const cid = (r.client_id || "").trim();
+      if (!cid) continue;
+      const prev = byId.get(cid);
+      if (!prev) byId.set(cid, r);
+      else {
+        const tPrev = new Date(prev.last_seen).getTime();
+        const tCur = new Date(r.last_seen).getTime();
+        if (tCur > tPrev) byId.set(cid, r);
+      }
+    }
+
+    const now = Date.now();
+    const items = Array.from(byId.values())
+      .map((r) => {
+        const last = new Date(r.last_seen).getTime();
+        const diffMin = Math.max(0, (now - last) / 60000);
+        return {
+          client_id: r.client_id || "",
+          sender: r.sender || "익명",
+          animal: r.animal || "",
+          last_seen: r.last_seen,
+          diffMin,
+        };
+      })
+      .filter((x) => x.diffMin <= 10.001)
+      .sort((a, b) => a.diffMin - b.diffMin);
+
+    const htmlItems = items
+      .map((x) => {
+        const isOnline = x.diffMin <= 2.0;
+        const isMe = x.client_id === CLIENT_ID;
+        const dotClass = isMe ? "dot-me" : isOnline ? "dot-on" : "dot-off";
+        const label = formatPresenceLabel(x.sender, x.animal, x.diffMin, isMe);
+        return `<div class="pitem" data-cid="${escapeHtml(x.client_id)}">
+                  <span class="dot ${dotClass}"></span>
+                  <span class="ptxt">${label}</span>
+                </div>`;
+      })
+      .join("");
+
+    presenceListEl.innerHTML =
+      htmlItems ||
+      `<div class="pitem"><span class="dot dot-off"></span><span class="ptxt">최근 접속자 없음</span></div>`;
+  } catch (e) {}
+}
+
+
+        const labels = users.map(u => {
+          const s = u.sender;
+          const a = u.animal || "동물";
+          if (!s) return a; // 이름이 없으면 동물로 표시
+          if ((counts[s] || 0) >= 2) return `${s}(${a})`; // 중복이면 구분자 추가
+          return s;
+        });
+
+        presenceListEl.textContent = labels.length ? labels.join(", ") : "-";
+      } catch (e) {}
+    }
 
     function startPresence() {
       if (presencePingTimer) clearInterval(presencePingTimer);
