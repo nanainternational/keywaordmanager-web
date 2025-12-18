@@ -1,686 +1,982 @@
 <!doctype html>
 <html lang="ko">
-<head>
-  <title>Keyword Manager</title>
+<head>  <!-- ✅ 모바일 입력창 눌렀을 때 확대(줌) 방지 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+
+  <title>Keyword Manager Web</title>
+
+  <!-- FullCalendar -->
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+
   <style>
-    :root{
-      --bg:#0b1020;
-      --panel:#11172a;
-      --panel2:#0f1526;
-      --text:#e8ecf3;
-      --muted:rgba(255,255,255,.65);
-      --line:rgba(255,255,255,.08);
-      --brand:#8b5cf6;
-      --brand2:#22c55e;
-      --danger:#ef4444;
-      --chip:#1a223a;
-      --shadow: 0 10px 30px rgba(0,0,0,.35);
+    :root {
+      --bg: #0b0d10;
+      --panel: #11141a;
+      --line: rgba(255,255,255,.08);
+      --text: rgba(255,255,255,.90);
+      --muted: rgba(255,255,255,.62);
+      --chip: rgba(255,255,255,.08);
+      --accent: #4da3ff;
+      --danger: #ff5a6a;
     }
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-      background: radial-gradient(1000px 500px at 20% 10%, rgba(139,92,246,.18), transparent 60%),
-                  radial-gradient(800px 400px at 90% 20%, rgba(34,197,94,.10), transparent 60%),
-                  var(--bg);
-      color:var(--text);
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+
+      /* ✅ 폰트 1 작게 + 얇게 */
+      font-size: 14px;
+      font-weight: 300;
+      overscroll-behavior: none;
     }
-    .wrap{max-width:1200px;margin:0 auto;padding:18px}
-    .topbar{
-      display:flex;align-items:center;justify-content:space-between;
-      padding:14px 16px;border-radius:16px;
-      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
-      border:1px solid var(--line);
-      box-shadow: var(--shadow);
-      gap:12px;
+
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 10px 10px 16px;
     }
-    .brand{
-      font-weight:900;letter-spacing:-.2px;
-      display:flex;align-items:center;gap:10px;
-      font-size:18px;
+
+    /* ✅ 환율 섹션: 최소화(작게) */
+    .rate-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 7px 10px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      margin-bottom: 10px;
+      font-size: 12px;
     }
-    .brand .dot{
-      width:10px;height:10px;border-radius:50%;background:var(--brand);
-      box-shadow:0 0 18px rgba(139,92,246,.8);
+    .rate-bar .label { color: var(--muted); font-weight: 300; }
+    .rate-bar .val { font-weight: 600; letter-spacing: .2px; }
+
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px;
+      margin-bottom: 10px;
     }
-    .tabs{display:flex;gap:8px;flex-wrap:wrap}
-    .tab{
-      border:1px solid var(--line);
-      background:rgba(255,255,255,.03);
-      color:var(--text);
-      padding:10px 12px;
-      border-radius:12px;
-      cursor:pointer;
-      font-weight:800;
-      font-size:13px;
-      user-select:none;
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 2px 2px 10px;
     }
-    .tab.active{
-      background:rgba(139,92,246,.18);
-      border-color: rgba(139,92,246,.35);
+    .section-title h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: .15px;
     }
-    .grid{
-      margin-top:14px;
-      display:grid;
-      grid-template-columns: 1fr;
-      gap:14px;
+    .hint { color: var(--muted); font-size: 11px; font-weight: 300; }
+
+    button.mini {
+      width: auto;
+      padding: 7px 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      flex: 0 0 auto;
     }
-    @media (min-width: 900px){
-      .grid{grid-template-columns: 1fr 1fr 1fr}
+
+    .mini.icon-btn{
+      width: 38px;
+      padding: 7px 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
-    .panel{
-      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
-      border:1px solid var(--line);
-      border-radius:18px;
-      box-shadow: var(--shadow);
-      padding:14px;
-      min-height:360px;
-      display:flex;
-      flex-direction:column;
-      gap:12px;
+    .refresh-icon{
+      display: inline-block;
+      font-size: 16px;
+      line-height: 1;
+      transform-origin: 50% 50%;
     }
-    .panel h2{
-      margin:0;
-      font-size:14px;
-      font-weight:900;
-      color:rgba(255,255,255,.92);
-      display:flex;align-items:center;justify-content:space-between;
-      gap:10px;
+    .spinning .refresh-icon{
+      animation: spin 0.9s linear infinite;
     }
-    .subactions{display:flex;gap:8px;flex-wrap:wrap}
-    .btn{
-      border:1px solid var(--line);
-      background:rgba(255,255,255,.03);
-      color:var(--text);
-      padding:10px 12px;
-      border-radius:12px;
-      cursor:pointer;
-      font-weight:900;
-      font-size:12px;
-      user-select:none;
-      white-space:nowrap;
+    @keyframes spin{
+      from{ transform: rotate(0deg); }
+      to{ transform: rotate(360deg); }
     }
-    .btn.primary{
-      background:rgba(139,92,246,.22);
-      border-color: rgba(139,92,246,.40);
+
+    /* ✅ 채팅 */
+    .chat-box {
+      height: 220px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
-    .btn.danger{
-      background:rgba(239,68,68,.15);
-      border-color: rgba(239,68,68,.35);
+    .chat-messages {
+      flex: 1;
+      overflow: auto;
+      padding: 8px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
     }
-    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    input, textarea{
-      width:100%;
-      background:rgba(0,0,0,.22);
-      border:1px solid var(--line);
-      color:var(--text);
-      padding:12px 12px;
-      border-radius:14px;
-      outline:none;
-      font-size:13px;
+    .msg {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: flex-start;
     }
-    textarea{min-height:90px;resize:vertical}
-    .stack{display:flex;flex-direction:column;gap:10px}
-    .small{font-size:12px;color:var(--muted)}
-    .divider{height:1px;background:var(--line);margin:4px 0}
-    .chat-log{
-      flex:1;
-      overflow:auto;
-      border-radius:14px;
-      border:1px solid var(--line);
-      background:rgba(0,0,0,.16);
-      padding:12px;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
+
+    .msg.me { justify-content: flex-end; }
+    .msg.me .bubble {
+      background: rgba(77,163,255,.16);
+      border-color: rgba(77,163,255,.26);
     }
-    .msg{
-      display:flex;flex-direction:column;gap:3px;
-      padding:10px 10px;
-      background:rgba(255,255,255,.03);
-      border:1px solid rgba(255,255,255,.06);
-      border-radius:14px;
+    .msg.me .meta { text-align: right; }
+
+    .bubble {
+      max-width: 80%;
+      padding: 9px 11px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.07);
+      border: 1px solid var(--line);
+      line-height: 1.25;
+      font-size: 13px;
+      font-weight: 300;
+      word-break: break-word;
     }
-    .msg .meta{font-size:11px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap}
-    .msg .text{font-size:13px;line-height:1.35}
-    .msg.me{
-      background:rgba(139,92,246,.14);
-      border-color: rgba(139,92,246,.25);
+    .bubble b { font-weight: 600; }
+    .meta {
+      color: var(--muted);
+      font-size: 10px;
+      margin-top: 3px;
+      font-weight: 300;
     }
-    .calendar{
-      flex:1;
-      overflow:auto;
-      border-radius:14px;
-      border:1px solid var(--line);
-      background:rgba(0,0,0,.16);
-      padding:10px;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
+
+    .chat-input-row {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 82px 1fr 70px;
+      gap: 8px;
+      align-items: center;
     }
-    .event{
-      display:flex;flex-direction:column;gap:6px;
-      padding:10px 10px;
-      background:rgba(255,255,255,.03);
-      border:1px solid rgba(255,255,255,.06);
-      border-radius:14px;
+    .chat-input-row > * { min-width: 0; }
+
+    input, textarea, button {
+      font: inherit;
+      color: var(--text);
+      outline: none;
     }
-    .event .title{font-weight:900;font-size:13px}
-    .event .dates{font-size:12px;color:var(--muted)}
-    .event .memo{font-size:12px;color:rgba(255,255,255,.86);white-space:pre-wrap}
-    .event .actions{display:flex;gap:8px;justify-content:flex-end}
+
+    input[type="text"], textarea {
+      font-size: 16px;
+      font-weight: 300;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+
+    button {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.06);
+      border-radius: 12px;
+      padding: 10px 10px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+      touch-action: manipulation; /* ✅ 모바일 탭 반응 개선 */
+    }
+    button.primary {
+      background: rgba(77,163,255,.18);
+      border-color: rgba(77,163,255,.28);
+    }
+    button.danger {
+      background: rgba(255,90,106,.16);
+      border-color: rgba(255,90,106,.26);
+    }
+    button:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    /* ✅ 메모 */
+    .memo-row {
+      display: grid;
+      grid-template-columns: 1fr 92px;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .memo-row > * { min-width: 0; }
+    .memo-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: var(--chip);
+      border: 1px solid var(--line);
+      font-size: 13px;
+      font-weight: 300;
+    }
+    .chip form { margin: 0; }
+    .chip button {
+      width: auto;
+      padding: 6px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+
+    /* ✅ 캘린더: 박스 제거 + 크게 */
+    .calendar-wrap {
+      padding: 0;
+      border: none;
+      background: transparent;
+    }
+    #calendar {
+      width: 100%;
+      min-height: 560px;
+      background: transparent;
+    }
+
+    .fc { font-size: 13px; font-weight: 300; }
+    .fc .fc-toolbar-title { font-size: 15px; font-weight: 600; }
+    .fc .fc-button {
+      border-radius: 10px !important;
+      border: 1px solid var(--line) !important;
+      background: rgba(255,255,255,.06) !important;
+      color: var(--text) !important;
+      box-shadow: none !important;
+      font-weight: 600 !important;
+    }
+    .fc .fc-button:hover { background: rgba(255,255,255,.10) !important; }
+    .fc-theme-standard td, .fc-theme-standard th { border-color: rgba(255,255,255,.06); }
+    .fc .fc-scrollgrid, .fc .fc-scrollgrid-section > * { border-color: rgba(255,255,255,.06); }
+
+    .ev-row {
+      display: inline-flex;
+      gap: 6px;
+      align-items: baseline;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+    .ev-title { overflow: hidden; text-overflow: ellipsis; }
+    .ev-time { opacity: .75; flex: 0 0 auto; }
     .presence-bar{
-      display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-      padding:10px 12px;border-radius:14px;
-      border:1px solid var(--line);
-      background:rgba(0,0,0,.16);
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:8px 10px;
+      border-radius:12px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.08);
+      overflow-x:auto;
+      -webkit-overflow-scrolling: touch;
     }
-    .presence-bar .dot{
-      width:10px;height:10px;border-radius:50%;
-      background:#3b82f6;
-      box-shadow:0 0 12px rgba(59,130,246,.55);
+    .presence-avatars{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:nowrap;
+    }
+    .presence-avatar{
+      width:34px;
+      height:34px;
+      border-radius:50%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:14px;
+      font-weight:700;
+      position:relative;
+      flex:0 0 auto;
+      user-select:none;
+    }
+    .presence-avatar.online{
+      background:#4da3ff;
+      color:#fff;
+    }
+    .presence-avatar.offline{
+      background:#6b7280;
+      color:#fff;
+      opacity:.65;
+    }
+    /* ✅ 접속 상태 점 (인스타 느낌) */
+    .presence-avatar::before{
+      content:"";
+      position:absolute;
+      right:-2px;
+      bottom:-2px;
+      width:10px;
+      height:10px;
+      border-radius:50%;
+      border:2px solid var(--panel, #11141a);
+      background:#9ca3af;
+    }
+    .presence-avatar.online::before{
+      background:#22c55e;
+    }
+    .presence-avatar:hover::after{
+      content:attr(data-label);
+      position:absolute;
+      left:50%;
+      bottom:-34px;
+      transform:translateX(-50%);
+      background:#000;
+      color:#fff;
+      padding:4px 8px;
+      border-radius:8px;
+      font-size:11px;
+      white-space:nowrap;
+      pointer-events:none;
+      z-index:50;
     }
 
-      .presence-pills{display:flex;flex-wrap:wrap;gap:8px}
-      .pill{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:999px;background:#1b1f2a;border:1px solid rgba(255,255,255,.06)}
-      .pill.offline{opacity:.65}
-      .avatar{position:relative;width:28px;height:28px;border-radius:50%;background:#2a3142;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;color:#fff;flex:0 0 28px}
-      .status-dot{position:absolute;right:-2px;bottom:-2px;width:10px;height:10px;border-radius:50%;border:2px solid #111421;background:#6b7280}
-      .status-dot.online{background:#3b82f6}
-      .pill .meta{display:flex;flex-direction:column;line-height:1.1}
-      .pill .name{font-weight:800;font-size:13px}
-      .pill .time{font-size:11px;color:rgba(255,255,255,.7)}
-      .presence-groups{display:flex;flex-direction:column;gap:10px}
-      .presence-group-title{font-size:12px;color:rgba(255,255,255,.65);font-weight:700}
 
-    .hidden{display:none !important}
+    @media (max-width: 480px) {
+      .wrap { padding: 10px 10px 16px; }
+      .chat-input-row { grid-template-columns: 76px 1fr 66px; }
+      .chat-box { height: 200px; }
+      #calendar { min-height: 620px; }
+      .fc .fc-toolbar { flex-wrap: wrap; gap: 6px; }
+      .modal .grid { grid-template-columns: 1fr; }
+    }
+
+    /* ✅ 모달 */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 14px;
+      z-index: 9999;
+      pointer-events: auto;
+    }
+    .modal {
+      width: 100%;
+      max-width: 520px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+      pointer-events: auto; /* ✅ 저장 버튼 탭 무시되는 현상 방지 */
+    }
+    .modal h4 { margin: 4px 2px 10px; font-size: 14px; font-weight: 600; }
+    .modal .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .modal .row { display: grid; gap: 6px; margin-bottom: 8px; }
+    .modal label { color: var(--muted); font-size: 11px; font-weight: 300; }
+    .modal textarea { min-height: 88px; resize: none; }
+    .modal .actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 10px;
+    }
   </style>
 </head>
+
 <body>
   <div class="wrap">
-    <div class="topbar">
-      <div class="brand"><span class="dot"></span> Keyword Manager</div>
-      <div class="tabs">
-        <div class="tab active" data-tab="chat">메시지</div>
-        <div class="tab" data-tab="memo">메모</div>
-        <div class="tab" data-tab="calendar">캘린더</div>
+    <div class="rate-bar">
+      <div class="label">중국(CNY) 조정 환율</div>
+      <div class="val">{{ exchange_rate if exchange_rate else "-" }}</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">
+        <h3>채팅</h3>
+      </div>
+
+      <div class="presence-bar">
+        <div id="presenceList" class="presence-avatars"></div>
+      </div>
+
+      <div class="chat-box">
+        <div id="chatMessages" class="chat-messages"></div>
+
+        <div class="chat-input-row">
+          <input id="chatSender" type="text" placeholder="이름" value="나나" autocomplete="off" inputmode="text">
+          <input id="chatInput" type="text" placeholder="메시지 입력..." autocomplete="off" inputmode="text">
+          <button class="primary" id="sendBtn" type="button">전송</button>
+        </div>
       </div>
     </div>
 
-    <div class="grid">
-      <!-- Chat -->
-      <div class="panel" id="panel-chat">
-        <h2>
-          메시지
-          <div class="subactions">
-            <button class="btn" id="chatRefreshBtn">새로고침</button>
-          </div>
-        </h2>
-
-        <div class="presence-bar">
-          <span class="dot"></span>
-          <div class="small" style="font-weight:900">최근 접속자</div>
-        </div>
-        <div id="presenceList" class="small" style="margin-top:-6px;line-height:1.4;">-</div>
-
-        <div class="stack">
-          <div class="row">
-            <input id="chatSender" placeholder="이름" value="">
-          </div>
-          <div class="chat-log" id="chatLog"></div>
-          <div class="row">
-            <input id="chatInput" placeholder="메시지 입력">
-            <button class="btn primary" id="sendBtn">전송</button>
-          </div>
-          <div class="small">이름을 입력해야 채팅 전송/접속 표시가 활성화됩니다.</div>
-        </div>
+    <div class="section">
+      <div class="section-title">
+        <h3>메모</h3>
+        <button class="mini icon-btn" id="refreshMemosBtn" type="button" aria-label="새로고침"><span class="refresh-icon" aria-hidden="true">⟳</span></button>
       </div>
 
-      <!-- Memo -->
-      <div class="panel hidden" id="panel-memo">
-        <h2>
-          메모
-          <div class="subactions">
-            <button class="btn" id="memoRefreshBtn">새로고침</button>
+      <form method="POST" class="memo-row">
+        <input type="text" name="memo_keyword" placeholder="메모 추가..." autocomplete="off" inputmode="text">
+        <button class="primary" type="submit" name="action" value="add_memo">추가</button>
+      </form>
+
+      <div class="memo-list">
+        {% for m in memo_list %}
+          <div class="chip">
+            <span>{{ m }}</span>
+            <form method="POST">
+              <input type="hidden" name="memo_keyword" value="{{ m }}">
+              <button class="danger" type="submit" name="action" value="delete_memo">삭제</button>
+            </form>
           </div>
-        </h2>
-        <textarea id="memoText" placeholder="메모를 작성하세요..."></textarea>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="calendar-wrap">
+      <div class="section-title" style="margin: 6px 2px 10px;">
+        <h3>캘린더</h3>
+        <button class="mini icon-btn" id="refreshCalendarBtn" type="button" aria-label="새로고침"><span class="refresh-icon" aria-hidden="true">⟳</span></button>
+      </div>
+      <div id="calendar"></div>
+    </div>
+  </div>
+
+  <div id="modalBackdrop" class="modal-backdrop">
+    <div class="modal">
+      <h4 id="modalTitle">일정 추가</h4>
+
+      <div class="row">
+        <label>제목</label>
+        <input id="evTitle" type="text" placeholder="예: 미팅 / 발주 / 상담" autocomplete="off" inputmode="text">
+      </div>
+
+      <div class="grid">
         <div class="row">
-          <button class="btn primary" id="memoSaveBtn">저장</button>
-          <button class="btn danger" id="memoClearBtn">삭제</button>
+          <label>시작</label>
+          <input id="evStart" type="text" placeholder="YYYY-MM-DD 또는 YYYY-MM-DDTHH:mm" autocomplete="off" inputmode="text">
         </div>
-        <div class="small" id="memoStatus"></div>
+        <div class="row">
+          <label>끝(선택)</label>
+          <input id="evEnd" type="text" placeholder="YYYY-MM-DD 또는 YYYY-MM-DDTHH:mm" autocomplete="off" inputmode="text">
+        </div>
       </div>
 
-      <!-- Calendar -->
-      <div class="panel hidden" id="panel-calendar">
-        <h2>
-          캘린더
-          <div class="subactions">
-            <button class="btn" id="calendarRefreshBtn">새로고침</button>
-          </div>
-        </h2>
-        <div class="calendar" id="calendarList"></div>
+      <div class="row">
+        <label>메모(선택)</label>
+        <textarea id="evMemo" placeholder="내용/메모"></textarea>
+      </div>
 
-        <div class="divider"></div>
-
-        <div class="stack">
-          <input id="eventTitle" placeholder="일정 제목">
-          <div class="row">
-            <input id="eventStart" type="date">
-            <input id="eventEnd" type="date">
-          </div>
-          <textarea id="eventMemo" placeholder="메모 (선택)"></textarea>
-          <div class="row">
-            <button class="btn primary" id="eventAddBtn">저장</button>
-          </div>
-          <div class="small" id="calendarStatus"></div>
-        </div>
+      <div class="actions">
+        <button id="evDelete" class="danger" type="button" style="display:none;">삭제</button>
+        <button id="evCancel" type="button">취소</button>
+        <button id="evSave" class="primary" type="button">저장</button>
       </div>
     </div>
   </div>
 
-<script>
-  const tabs = document.querySelectorAll(".tab");
-  const panels = {
-    chat: document.getElementById("panel-chat"),
-    memo: document.getElementById("panel-memo"),
-    calendar: document.getElementById("panel-calendar")
-  };
+  <script>
+    async function jget(url) {
+      const r = await fetch(url, { cache: "no-store" });
+      return await r.json();
+    }
+    async function jpost(url, body) {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      return await r.json();
+    }
+    async function jput(url, body) {
+      const r = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      return await r.json();
+    }
+    async function jdel(url) {
+      const r = await fetch(url, { method: "DELETE" });
+      return await r.json();
+    }
 
-  tabs.forEach(t => {
-    t.addEventListener("click", () => {
-      tabs.forEach(x => x.classList.remove("active"));
-      t.classList.add("active");
-      const key = t.dataset.tab;
-      Object.keys(panels).forEach(k => panels[k].classList.toggle("hidden", k !== key));
-    });
-  });
+    // =========================
+    // ✅ 채팅 (늦게 뜨는 문제 개선)
+    // - 폴링 2초 -> 0.7초
+    // - send 성공 시 즉시 append
+    // =========================
+    let lastChatId = 0;
+    const chatBox = document.getElementById("chatMessages");
+    const chatInput = document.getElementById("chatInput");
+    const chatSender = document.getElementById("chatSender");
+    const sendBtn = document.getElementById("sendBtn");
+    const CHAT_ROOM = "main";
 
-  function jget(url){
-    return fetch(url, { credentials: "include" }).then(r => r.json());
-  }
-  function jpost(url, body){
-    return fetch(url, {
-      method:"POST",
-      headers: {"Content-Type":"application/json"},
-      credentials: "include",
-      body: JSON.stringify(body || {})
-    }).then(r => r.json());
-  }
-
-  const chatSender = document.getElementById("chatSender");
-  const chatLog = document.getElementById("chatLog");
-  const chatInput = document.getElementById("chatInput");
-  const sendBtn = document.getElementById("sendBtn");
-  const chatRefreshBtn = document.getElementById("chatRefreshBtn");
-
-  const presenceList = document.getElementById("presenceList");
-
-  const memoText = document.getElementById("memoText");
-  const memoSaveBtn = document.getElementById("memoSaveBtn");
-  const memoClearBtn = document.getElementById("memoClearBtn");
-  const memoStatus = document.getElementById("memoStatus");
-  const memoRefreshBtn = document.getElementById("memoRefreshBtn");
-
-  const calendarList = document.getElementById("calendarList");
-  const eventTitle = document.getElementById("eventTitle");
-  const eventStart = document.getElementById("eventStart");
-  const eventEnd = document.getElementById("eventEnd");
-  const eventMemo = document.getElementById("eventMemo");
-  const eventAddBtn = document.getElementById("eventAddBtn");
-  const calendarStatus = document.getElementById("calendarStatus");
-  const calendarRefreshBtn = document.getElementById("calendarRefreshBtn");
-
-  const CHAT_ROOM = "main";
-    // ✅ 이름(발신자) 저장/복원: 이름 입력 전에는 채팅 입력/전송을 막음
-    const SAVED_SENDER = localStorage.getItem("chat_sender") || "";
-    if (SAVED_SENDER && !chatSender.value.trim()) chatSender.value = SAVED_SENDER;
-
+    // ✅ 이름 입력 전에는 채팅 입력/전송 비활성화
     function updateChatEnabled() {
-      const sender = (chatSender.value || "").trim();
-      const ok = sender.length > 0;
+      const name = (chatSender.value || "").trim();
+      const ok = name.length > 0;
       chatInput.disabled = !ok;
       sendBtn.disabled = !ok;
-      chatInput.placeholder = ok ? "메시지 입력" : "이름을 먼저 입력해주세요";
-      if (ok) {
-        localStorage.setItem("chat_sender", sender);
+    }
+    chatSender.addEventListener("input", updateChatEnabled);
+
+
+    // ✅ 브라우저/기기별 고유 ID (로그인 없이 "내 글" 구분)
+    let CLIENT_ID = localStorage.getItem("chat_client_id");
+    if (!CLIENT_ID) {
+      try {
+        CLIENT_ID = (crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+      } catch (e) {
+        CLIENT_ID = (Date.now().toString(36) + Math.random().toString(36).slice(2));
       }
+      localStorage.setItem("chat_client_id", CLIENT_ID);
     }
 
-    chatSender.addEventListener("input", () => {
-      updateChatEnabled();
-    });
-
-  // client_id
-  let CLIENT_ID = localStorage.getItem("chat_client_id");
-  if (!CLIENT_ID) {
-    CLIENT_ID = "c_" + Math.random().toString(36).slice(2) + "_" + Date.now();
-    localStorage.setItem("chat_client_id", CLIENT_ID);
-
-    // ✅ 동물 별칭(귀여운 표시용)
-    const ANIMAL_KEY = "chat_animal";
-    const animals = ["토끼","고양이","강아지","여우","호랑이","곰","펭귄","사자","기린","다람쥐"];
+    // ✅ 기기/브라우저별 동물 별명 (client_id가 다르면 자동으로 구분되게)
+    const ANIMAL_KEY = "chat_animal_alias";
+    const ANIMALS = [
+      "고양이","강아지","토끼","여우","곰","사자","호랑이","판다","펭귄","돌고래",
+      "수달","코알라","기린","코끼리","치타","늑대","하마","알파카","다람쥐","고슴도치",
+      "앵무새","부엉이","독수리","거북이","악어","참새","두더지","너구리","햄스터","라쿤"
+    ];
+    function _hash32(str){
+      let h = 2166136261;
+      for (let i=0;i<str.length;i++){
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return (h >>> 0);
+    }
     let ANIMAL_ALIAS = localStorage.getItem(ANIMAL_KEY);
     if (!ANIMAL_ALIAS) {
-      ANIMAL_ALIAS = animals[Math.floor(Math.random() * animals.length)];
+      try {
+        const n = _hash32(CLIENT_ID);
+        ANIMAL_ALIAS = ANIMALS[n % ANIMALS.length];
+      } catch(e) {
+        ANIMAL_ALIAS = ANIMALS[Math.floor(Math.random()*ANIMALS.length)];
+      }
       localStorage.setItem(ANIMAL_KEY, ANIMAL_ALIAS);
     }
-  }
-  // ANIMAL_ALIAS는 항상 존재하도록
-  const ANIMAL_ALIAS = localStorage.getItem("chat_animal") || "토끼";
 
-  let lastChatId = 0;
-  let chatTimer = null;
-  let presenceTimer = null;
-  let presencePingTimer = null;
-
-  function escapeHtml(s){
-    return String(s || "").replace(/[&<>"']/g, m => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
-    }[m]));
-  }
-
-  function formatTime(iso){
-    try {
-      const d = new Date(iso);
-      const hh = String(d.getHours()).padStart(2,"0");
-      const mm = String(d.getMinutes()).padStart(2,"0");
-      return `${hh}:${mm}`;
-    } catch(e){ return ""; }
-  }
-
-  async function pollChat(){
-    try {
-      const data = await jget(`/api/chat/messages?room=${encodeURIComponent(CHAT_ROOM)}&after_id=${lastChatId}`);
-      if (!data || !data.ok) return;
-      const msgs = data.messages || [];
-      if (msgs.length) {
-        msgs.forEach(addChatMsg);
-        lastChatId = msgs[msgs.length-1].id;
-        chatLog.scrollTop = chatLog.scrollHeight;
-      }
-    } catch(e){}
-  }
-
-  function addChatMsg(m){
-    const sender = m.sender || "";
-    const message = m.message || "";
-    const created = m.created_at || "";
-
-    const myName = (chatSender.value || "").trim();
-    const isMe = myName && sender === myName;
-
-    const el = document.createElement("div");
-    el.className = "msg" + (isMe ? " me" : "");
-    el.innerHTML = `
-      <div class="meta">
-        <span style="font-weight:900;color:rgba(255,255,255,.85)">${escapeHtml(sender)}</span>
-        <span>${escapeHtml(formatTime(created))}</span>
-      </div>
-      <div class="text">${escapeHtml(message)}</div>
-    `;
-    chatLog.appendChild(el);
-  }
-
-  async function sendChat(){
-    const sender = (chatSender.value || "").trim();
-      if (!sender) { alert("이름을 입력해주세요"); updateChatEnabled(); return; }
-    const message = (chatInput.value || "").trim();
-    if (!message) return;
-
-    const res = await jpost("/api/chat/send", {
-      room: CHAT_ROOM,
-      sender,
-      message
-    });
-
-    if (res && res.ok) {
-      chatInput.value = "";
-      pollChat();
+    // ✅ 이름(보낸사람) 기기별 저장 (PC/폰 각각 유지)
+ 기기별 저장 (PC/폰 각각 유지)
+    const NAME_KEY = "chat_sender_name";
+    const savedName = localStorage.getItem(NAME_KEY);
+    if (savedName && savedName.trim()) {
+      chatSender.value = savedName.trim();
     }
-  }
+    const saveName = () => {
+      const v = (chatSender.value || "").trim();
+      if (v) localStorage.setItem(NAME_KEY, v);
+    };
+    chatSender.addEventListener("change", saveName);
+    chatSender.addEventListener("blur", saveName);
 
-  sendBtn.addEventListener("click", sendChat);
-  chatInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") sendChat();
-  });
-  chatRefreshBtn.addEventListener("click", () => {
-    lastChatId = 0;
-    chatLog.innerHTML = "";
-    pollChat();
-  });
+    updateChatEnabled();
 
-    function _presenceSender() {
-      return (chatSender?.value || "").trim();
-    }
-
-    function _formatAgoMinutes(mins) {
-      if (mins < 0) mins = 0;
-      if (mins < 60) return `${mins}분전`;
-      const h = Math.floor(mins / 60);
-      if (h < 24) return `${h}시간전`;
-      const d = Math.floor(h / 24);
-      return `${d}일전`;
-    }
-
-    function _initialFromName(name) {
-      const n = (name || "").trim();
-      if (!n) return "?";
-      // 한글/영문/숫자 모두 첫 글자만
-      return n[0].toUpperCase();
-    }
-
-    function _renderPresence(users) {
-      const now = Date.now();
-      const ONLINE_MIN = 2;
-
-      // sender 기준으로 병합(같은 사람이 여러 client_id일 때 최신 1개만)
-      const bySender = new Map();
-      for (const u of users) {
-        const sender = (u.sender || "").trim();
-        if (!sender) continue; // 이름 없는건 표시 안함
-        const t = u.last_seen ? new Date(u.last_seen).getTime() : 0;
-        const prev = bySender.get(sender);
-        if (!prev || t > (prev._t || 0)) {
-          bySender.set(sender, { ...u, sender, _t: t });
-        }
-      }
-
-      const merged = Array.from(bySender.values())
-        .sort((a, b) => (b._t || 0) - (a._t || 0));
-
-      const online = [];
-      const offline = [];
-
-      for (const u of merged) {
-        const mins = u._t ? Math.floor((now - u._t) / 60000) : 999999;
-        const isOnline = mins < ONLINE_MIN;
-        const item = { ...u, _mins: mins, _online: isOnline };
-        (isOnline ? online : offline).push(item);
-      }
-
-      function pill(u) {
-        const animal = (u.animal || "").trim();
-        const showName = u.sender || "익명";
-        const timeText = u._online ? "접속중" : _formatAgoMinutes(u._mins);
-        return `
-          <div class="pill ${u._online ? "" : "offline"}">
-            <div class="avatar">
-              ${escapeHtml(_initialFromName(showName))}
-              <span class="status-dot ${u._online ? "online" : ""}"></span>
-            </div>
-            <div class="meta">
-              <div class="name">${escapeHtml(showName)}${animal ? ` <span style="opacity:.75;font-weight:700">(${escapeHtml(animal)})</span>` : ""}</div>
-              <div class="time">${escapeHtml(timeText)}</div>
-            </div>
-          </div>
-        `;
-      }
-
-      const onlineHtml = online.length
-        ? `<div class="presence-group-title">접속중</div><div class="presence-pills">${online.map(pill).join("")}</div>`
-        : `<div class="presence-group-title">접속중</div><div style="opacity:.6;font-size:12px">없음</div>`;
-
-      const offlineHtml = offline.length
-        ? `<div class="presence-group-title">비접속중</div><div class="presence-pills">${offline.map(pill).join("")}</div>`
-        : `<div class="presence-group-title">비접속중</div><div style="opacity:.6;font-size:12px">없음</div>`;
-
-      presenceList.innerHTML = `<div class="presence-groups">${onlineHtml}${offlineHtml}</div>`;
-    }
+    // ✅ 최근 접속자(Presence)
+    const presenceListEl = document.getElementById("presenceList");
+    let presenceTimer = null;
+    let presencePingTimer = null;
 
     async function presencePing() {
-      const sender = _presenceSender();
-      if (!sender) return; // 이름 입력 전엔 기록 안남김
       try {
-        await jpost("/api/presence/ping", { client_id: CLIENT_ID, sender, animal: ANIMAL_ALIAS });
+        await jpost("/api/presence/ping", { client_id: CLIENT_ID, sender: (chatSender.value || "").trim() || "익명", animal: ANIMAL_ALIAS });
       } catch (e) {}
     }
 
-    async function presenceRefresh() {
+    function formatPresenceTime(iso) {
+      if (!iso) return "";
       try {
-        // 최대 1일(1440분) 범위로 최근 접속자 목록 조회
+        const diffMin = Math.floor((Date.now() - new Date(iso)) / 60000);
+
+        // ✅ 최근 2분 이내: 접속중
+        if (diffMin < 2) return "접속중";
+
+        // ✅ 1~59분: n분전
+        if (diffMin < 60) return `${diffMin}분전`;
+
+        // ✅ 1~23시간: n시간전
+        const h = Math.floor(diffMin / 60);
+        if (h < 24) return `${h}시간전`;
+
+        // ✅ 24시간 이상: 1일전
+        return "1일전";
+      } catch (e) {
+        return "";
+      }
+    }
+
+async function presenceRefresh() {
+      try {
+        // ✅ 2~5명 소수 사용 기준: 하루치까지 가져와서 "n분전/n시간전/1일전" 표기
         const data = await jget("/api/presence/list?minutes=1440");
         if (!data || !data.ok) return;
 
         const users = (data.users || []).map(u => ({
           client_id: (u.client_id || ""),
-          sender: (u.sender || ""),
-          animal: (u.animal || ""),
-          last_seen: (u.last_seen || null)
+          name: ((u.sender || "").trim()) || ((u.animal || "").trim()) || "익명",
+          last_seen: (u.last_seen || null),
         }));
 
-        _renderPresence(users);
+        // ✅ 최근 순으로 최대 8개만 (원하면 늘려도 됨)
+        const slice = users.slice(0, 8);
+
+        const frag = document.createDocumentFragment();
+        slice.forEach(u => {
+          const state = formatPresenceTime(u.last_seen);
+          const online = (state === "접속중");
+
+          const el = document.createElement("div");
+          el.className = "presence-avatar " + (online ? "online" : "offline");
+          el.textContent = (u.name || "익명").charAt(0);
+          el.setAttribute("data-label", `${u.name} · ${state}`);
+          frag.appendChild(el);
+        });
+
+        presenceListEl.innerHTML = "";
+        presenceListEl.appendChild(frag);
+        if (!slice.length) presenceListEl.textContent = "-";
       } catch (e) {}
     }
 
     function startPresence() {
-      if (presenceTimer) clearInterval(presenceTimer);
       if (presencePingTimer) clearInterval(presencePingTimer);
+      if (presenceTimer) clearInterval(presenceTimer);
 
-      presenceRefresh();
       presencePing();
+      presenceRefresh();
 
-      // 25초마다 접속 유지 신호 (이름 입력된 경우에만)
+      // 20초마다 접속 유지 신호
       presencePingTimer = setInterval(() => {
         if (!document.hidden) presencePing();
-      }, 25000);
+      }, 30000);
 
       // 10초마다 목록 갱신
       presenceTimer = setInterval(() => {
         if (!document.hidden) presenceRefresh();
-      }, 10000);
+      }, 15000);
     }
 
-  // -----------------------------
-  // Memo (localStorage 기반)
-  // -----------------------------
-  const MEMO_KEY = "memo_text";
-  function loadMemo(){
-    memoText.value = localStorage.getItem(MEMO_KEY) || "";
-    memoStatus.textContent = "불러옴";
-    setTimeout(()=>memoStatus.textContent="", 1200);
-  }
-  function saveMemo(){
-    localStorage.setItem(MEMO_KEY, memoText.value || "");
-    memoStatus.textContent = "저장됨";
-    setTimeout(()=>memoStatus.textContent="", 1200);
-  }
-  function clearMemo(){
-    memoText.value = "";
-    localStorage.removeItem(MEMO_KEY);
-    memoStatus.textContent = "삭제됨";
-    setTimeout(()=>memoStatus.textContent="", 1200);
-  }
-  memoSaveBtn.addEventListener("click", saveMemo);
-  memoClearBtn.addEventListener("click", clearMemo);
-  memoRefreshBtn.addEventListener("click", loadMemo);
-
-  // -----------------------------
-  // Calendar
-  // -----------------------------
-  async function loadCalendar(){
-    calendarStatus.textContent = "";
-    try{
-      const data = await jget("/api/events");
-      if (!data || !data.ok) return;
-      const events = data.events || [];
-      renderCalendar(events);
-    }catch(e){
-      calendarStatus.textContent = "불러오기 실패";
-    }
-  }
-
-  function renderCalendar(events){
-    calendarList.innerHTML = "";
-    if (!events.length){
-      const empty = document.createElement("div");
-      empty.className = "small";
-      empty.style.opacity = ".7";
-      empty.textContent = "일정이 없습니다.";
-      calendarList.appendChild(empty);
-      return;
+    function escapeHtml(s) {
+      return (s || "").replace(/[&<>"']/g, (c) => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      }[c]));
     }
 
-    events.forEach(ev=>{
-      const el = document.createElement("div");
-      el.className = "event";
-      el.innerHTML = `
-        <div class="title">${escapeHtml(ev.title)}</div>
-        <div class="dates">${escapeHtml(ev.start_date)} ~ ${escapeHtml(ev.end_date)}</div>
-        ${ev.memo ? `<div class="memo">${escapeHtml(ev.memo)}</div>` : ""}
-        <div class="actions">
-          <button class="btn danger" data-del="${ev.id}">삭제</button>
-        </div>
-      `;
-      el.querySelector("[data-del]").addEventListener("click", async ()=>{
-        await fetch(`/api/events/${ev.id}`, {method:"DELETE", credentials:"include"});
-        loadCalendar();
+    function formatChatTime(iso) {
+      if (!iso) return "";
+      try {
+        const d = new Date(iso);
+        const parts = new Intl.DateTimeFormat("en-US", {
+          timeZone: "Asia/Seoul",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true
+        }).formatToParts(d);
+
+        const get = (t) => (parts.find(p => p.type === t)?.value || "");
+        const y = get("year");
+        const mo = get("month");
+        const da = get("day");
+        const hourRaw = get("hour");
+        const mi = get("minute");
+        const dayPeriod = (get("dayPeriod") || "").toLowerCase(); // am/pm
+        const h = String(parseInt(hourRaw || "0", 10)); // remove leading 0
+
+        return `-${y}-${mo}-${da} ${dayPeriod}${h}:${mi}`;
+      } catch (e) {
+        return iso;
+      }
+    }
+
+    function setSpinning(btn, on) {
+      if (!btn) return;
+      if (on) btn.classList.add("spinning");
+      else btn.classList.remove("spinning");
+    }
+
+    function appendMsg(m) {
+      const wrap = document.createElement("div");
+      wrap.className = (m && m.client_id && m.client_id === CLIENT_ID) ? "msg me" : "msg";
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.innerHTML = `<b>${escapeHtml(m.sender || "익명")}</b><div style="height:6px"></div>${escapeHtml(m.message)}`;
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = formatChatTime(m.created_at);
+
+      const col = document.createElement("div");
+      col.appendChild(bubble);
+      col.appendChild(meta);
+
+      wrap.appendChild(col);
+      chatBox.appendChild(wrap);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    async function pollChatOnce() {
+      const data = await jget(`/api/chat/messages?room=${encodeURIComponent(CHAT_ROOM)}&after_id=${lastChatId}`);
+      if (data && data.ok && Array.isArray(data.messages)) {
+        for (const m of data.messages) {
+          appendMsg(m);
+          lastChatId = Math.max(lastChatId, m.id);
+        }
+      }
+    }
+
+    let chatPollTimer = null;
+
+    async function pollChat() {
+      if (chatPollTimer) clearTimeout(chatPollTimer);
+
+      if (document.hidden) {
+        chatPollTimer = setTimeout(pollChat, 5000);
+        return;
+      }
+
+      try { await pollChatOnce(); } catch (e) {}
+
+      chatPollTimer = setTimeout(pollChat, 2000);
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) pollChat();
+
+    startPresence();
+    });
+
+    async function sendChat() {
+      saveName();
+      const sender = (chatSender.value || "익명").trim();
+      const message = (chatInput.value || "").trim();
+      if (!message) return;
+
+      sendBtn.disabled = true;
+      chatInput.disabled = true;
+
+      try {
+        chatInput.value = "";
+        const res = await jpost("/api/chat/send", { room: CHAT_ROOM, sender, message, client_id: CLIENT_ID });
+
+        // ✅ 서버가 id/created_at을 주면, 폴링 기다리지 말고 즉시 추가
+        if (res && res.ok) {
+          appendMsg({ id: res.id, sender, message, created_at: res.created_at || "", client_id: CLIENT_ID });
+          lastChatId = Math.max(lastChatId, res.id || lastChatId);
+        } else {
+          // 실패하면 한 번 더 폴링
+          await pollChatOnce();
+        }
+      } catch (e) {
+        try { await pollChatOnce(); } catch (e2) {}
+      } finally {
+        updateChatEnabled();
+        chatInput.focus();
+      }
+    }
+
+    sendBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); sendChat(); });
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); sendChat(); }
+    });
+
+    // =========================
+    // ✅ 캘린더 + 모달 (저장 버튼 안눌림 개선)
+    // - 버튼 type=button
+    // - 클릭시 stopPropagation
+    // =========================
+    const modalBackdrop = document.getElementById("modalBackdrop");
+    const modalTitle = document.getElementById("modalTitle");
+    const evTitle = document.getElementById("evTitle");
+    const evStart = document.getElementById("evStart");
+    const evEnd = document.getElementById("evEnd");
+    const evMemo = document.getElementById("evMemo");
+    const evSave = document.getElementById("evSave");
+    const evCancel = document.getElementById("evCancel");
+    const evDelete = document.getElementById("evDelete");
+
+    let currentEventId = null;
+    let calendar = null;
+
+    function openModal(mode, payload) {
+      currentEventId = payload?.id ?? null;
+
+      modalTitle.textContent = mode === "edit" ? "일정 수정" : "일정 추가";
+      evDelete.style.display = mode === "edit" ? "inline-flex" : "none";
+
+      evTitle.value = payload?.title || "";
+      evStart.value = payload?.start || "";
+      evEnd.value = payload?.end || "";
+      evMemo.value = payload?.memo || "";
+
+      modalBackdrop.style.display = "flex";
+    }
+
+    function closeModal() {
+      modalBackdrop.style.display = "none";
+      currentEventId = null;
+    }
+
+    evCancel.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); closeModal(); });
+    modalBackdrop.addEventListener("click", (e) => {
+      if (e.target === modalBackdrop) closeModal();
+    });
+
+    evSave.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const title = (evTitle.value || "").trim();
+      const start = (evStart.value || "").trim();
+      const end = (evEnd.value || "").trim();
+      const memo = (evMemo.value || "").trim();
+
+      if (!title || !start) return;
+
+      evSave.disabled = true;
+
+      try {
+        if (currentEventId) {
+          await jput(`/api/events/${currentEventId}`, { title, start, end: end || null, memo });
+        } else {
+          await jpost("/api/events", { title, start, end: end || null, allDay: false, memo });
+        }
+        closeModal();
+        calendar.refetchEvents();
+      } catch (e2) {
+      } finally {
+        evSave.disabled = false;
+      }
+    });
+
+    evDelete.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (!currentEventId) return;
+      if (!confirm("이 일정을 삭제할까요?")) return;
+
+      evDelete.disabled = true;
+
+      try {
+        await jdel(`/api/events/${currentEventId}`);
+        closeModal();
+        calendar.refetchEvents();
+      } catch (e2) {
+      } finally {
+        evDelete.disabled = false;
+      }
+    });
+
+    async function initCalendar() {
+      const calEl = document.getElementById("calendar");
+
+      calendar = new FullCalendar.Calendar(calEl, {
+        initialView: "dayGridMonth",
+          timeZone: "Asia/Seoul",
+      displayEventTime: false,
+        height: "auto",
+        expandRows: true,
+        nowIndicator: true,
+
+        selectable: true,
+        selectMirror: true,
+        longPressDelay: 180,
+        selectLongPressDelay: 180,
+
+        events: async (info, success, failure) => {
+          try {
+            const data = await jget("/api/events");
+            success(data || []);
+          } catch (e) {
+            failure(e);
+          }
+        },
+
+        dateClick: (arg) => {
+          openModal("add", { title: "", start: arg.dateStr, end: "", memo: "" });
+        },
+
+        select: (sel) => {
+          openModal("add", { title: "", start: sel.startStr, end: sel.endStr || "", memo: "" });
+        },
+
+        eventClick: (info) => {
+          const e = info.event;
+          openModal("edit", {
+            id: e.id,
+            title: e.title,
+            start: e.startStr,
+            end: e.endStr || "",
+            memo: (e.extendedProps && e.extendedProps.memo) ? e.extendedProps.memo : ""
+          });
+        },
+
+        eventContent: (arg) => {
+          const wrap = document.createElement("span");
+          wrap.className = "ev-row";
+
+          const title = document.createElement("span");
+          title.className = "ev-title";
+          title.textContent = arg.event.title || "";
+
+          const time = document.createElement("span");
+          time.className = "ev-time";
+          time.textContent = arg.timeText ? ` ${arg.timeText}` : "";
+
+          wrap.appendChild(title);
+          if (arg.timeText) wrap.appendChild(time);
+
+          return { domNodes: [wrap] };
+        }
       });
-      calendarList.appendChild(el);
+
+      calendar.render();
+    }
+
+    pollChat();
+
+    startPresence();
+    initCalendar();
+
+  const refreshMemosBtn = document.getElementById("refreshMemosBtn");
+  if (refreshMemosBtn) {
+    refreshMemosBtn.addEventListener("click", () => {
+      setSpinning(refreshMemosBtn, true);
+      // 화면이 바로 이동되기 전에 아이콘이 조금이라도 돌아가게 딜레이
+      setTimeout(() => window.location.reload(), 60);
     });
   }
 
-  async function addCalendar(){
-    const title = (eventTitle.value || "").trim();
-    const start_date = (eventStart.value || "").trim();
-    const end_date = (eventEnd.value || "").trim();
-    const memo = (eventMemo.value || "").trim();
-
-    if (!title || !start_date || !end_date){
-      calendarStatus.textContent = "제목/시작/끝 날짜는 필수입니다.";
-      return;
-    }
-
-    calendarStatus.textContent = "저장중...";
-    const res = await jpost("/api/events", {title, start_date, end_date, memo});
-    if (res && res.ok){
-      eventTitle.value = "";
-      eventMemo.value = "";
-      calendarStatus.textContent = "저장됨";
-      loadCalendar();
-      setTimeout(()=>calendarStatus.textContent="", 1200);
-    }else{
-      calendarStatus.textContent = "저장 실패";
-    }
+  const refreshCalendarBtn = document.getElementById("refreshCalendarBtn");
+  if (refreshCalendarBtn) {
+    refreshCalendarBtn.addEventListener("click", () => {
+      setSpinning(refreshCalendarBtn, true);
+      if (calendar) calendar.refetchEvents();
+      setTimeout(() => setSpinning(refreshCalendarBtn, false), 800);
+    });
   }
-
-  eventAddBtn.addEventListener("click", addCalendar);
-  calendarRefreshBtn.addEventListener("click", loadCalendar);
-
-  // init
-  function startChatPolling(){
-    if (chatTimer) clearInterval(chatTimer);
-    pollChat();
-    chatTimer = setInterval(()=>{ if (!document.hidden) pollChat(); }, 4000);
-  }
-
-  updateChatEnabled();
-    pollChat();
-    startChatPolling();
-    startPresence();
-    loadMemo();
-    loadCalendar();
-</script>
+  </script>
 </body>
 </html>
