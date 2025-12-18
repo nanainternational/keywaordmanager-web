@@ -103,11 +103,17 @@ def ensure_db():
                     create table if not exists presence(
                         client_id text primary key,
                         sender text,
+                        animal text,
                         last_seen timestamptz not null default now(),
                         user_agent text
                     )
                     """
                 )
+                # 기존 테이블 호환: 컬럼 누락 시 추가
+                cur.execute("alter table presence add column if not exists sender text")
+                cur.execute("alter table presence add column if not exists animal text")
+                cur.execute("alter table presence add column if not exists last_seen timestamptz not null default now()")
+                cur.execute("alter table presence add column if not exists user_agent text")
 
             conn.commit()
         _DB_READY = True
@@ -453,6 +459,7 @@ def presence_ping():
     data = request.get_json(silent=True) or {}
     client_id = (data.get("client_id") or "").strip()
     sender = (data.get("sender") or "").strip() or None
+    animal = (data.get("animal") or "").strip() or None
     if not client_id:
         return jsonify({"ok": False, "error": "no_client_id"}), 400
 
@@ -463,14 +470,15 @@ def presence_ping():
         with conn.cursor() as cur:
             cur.execute(
                 """
-                insert into presence (client_id, sender, last_seen, user_agent)
-                values (%s, %s, %s, %s)
+                insert into presence (client_id, sender, animal, last_seen, user_agent)
+                values (%s, %s, %s, %s, %s)
                 on conflict (client_id) do update
-                set sender = excluded.sender,
+                set sender = coalesce(excluded.sender, presence.sender),
+                    animal = coalesce(excluded.animal, presence.animal),
                     last_seen = excluded.last_seen,
                     user_agent = excluded.user_agent
                 """,
-                (client_id, sender, now, ua),
+                (client_id, sender, animal, now, ua),
             )
         conn.commit()
 
@@ -492,7 +500,7 @@ def presence_list():
         with conn.cursor() as cur:
             cur.execute(
                 """
-                select client_id, sender, last_seen
+                select client_id, sender, animal, last_seen
                 from presence
                 where last_seen >= (now() - (%s || ' minutes')::interval)
                 order by last_seen desc
@@ -506,7 +514,7 @@ def presence_list():
         "ok": True,
         "minutes": minutes,
         "users": [
-            {"client_id": r[0], "sender": r[1] or "", "last_seen": r[2].isoformat() if r[2] else None}
+            {"client_id": r[0], "sender": (r[1] or ""), "animal": (r[2] or ""), "last_seen": r[3].isoformat() if r[3] else None}
             for r in rows
         ]
     })
