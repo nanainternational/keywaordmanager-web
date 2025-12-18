@@ -72,6 +72,18 @@ def ensure_db():
                     """
                 )
 
+                # ✅ 채팅 client_id 컬럼 (브라우저/기기별 식별용)
+                cur.execute(
+                    """
+                    select 1
+                    from information_schema.columns
+                    where table_schema='public' and table_name='chat_messages' and column_name='client_id'
+                    """
+                )
+                if cur.fetchone() is None:
+                    cur.execute("alter table chat_messages add column client_id text")
+
+
                 # calendar_events
                 cur.execute(
                     """
@@ -373,7 +385,7 @@ def chat_messages():
         with conn.cursor() as cur:
             cur.execute(
                 """
-                select id, sender, message, created_at
+                select id, sender, message, created_at, client_id
                 from chat_messages
                 where room = %s and id > %s
                 order by id asc
@@ -386,7 +398,7 @@ def chat_messages():
         {
             "ok": True,
             "messages": [
-                {"id": r[0], "sender": r[1], "message": r[2], "created_at": r[3].isoformat() if r[3] else None}
+                {"id": r[0], "sender": r[1], "message": r[2], "created_at": r[3].isoformat() if r[3] else None, "client_id": r[4]}
                 for r in rows
             ],
         }
@@ -400,6 +412,7 @@ def send_chat():
     room = (data.get("room") or "main").strip() or "main"
     sender = (data.get("sender") or "익명").strip()
     message = (data.get("message") or "").strip()
+    client_id = (data.get("client_id") or "").strip() or None
     if not message:
         return jsonify({"ok": False, "error": "empty_message"}), 400
 
@@ -409,11 +422,11 @@ def send_chat():
         with conn.cursor() as cur:
             cur.execute(
                 """
-                insert into chat_messages (room, sender, message, created_at)
-                values (%s, %s, %s, %s)
+                insert into chat_messages (room, sender, message, created_at, client_id)
+                values (%s, %s, %s, %s, %s)
                 returning id
                 """,
-                (room, sender, message, now),
+                (room, sender, message, now, client_id),
             )
             msg_id = cur.fetchone()[0]
         conn.commit()
