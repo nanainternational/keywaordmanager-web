@@ -240,7 +240,7 @@
       font-size: 12px;
     }
 
-    /* ✅ 캘린더 */
+    /* ✅ 캘린더 (원래처럼 박스 디자인 복구) */
     .calendar-wrap {
       background: var(--panel);
       border: 1px solid var(--line);
@@ -248,14 +248,40 @@
       padding: 10px;
     }
     #calendar {
+      width: 100%;
+      min-height: 560px;
       border-radius: 12px;
-      background: rgba(255,255,255,04);
-      border: 1px solid rgba(255,255,255,08);
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.08);
+      overflow: hidden;
     }
 
-    /* ✅ presence */
+    .fc { font-size: 13px; font-weight: 300; }
+    .fc .fc-toolbar-title { font-size: 15px; font-weight: 600; }
+    .fc .fc-button {
+      border-radius: 10px !important;
+      border: 1px solid var(--line) !important;
+      background: rgba(255,255,255,.06) !important;
+      color: var(--text) !important;
+      box-shadow: none !important;
+      font-weight: 600 !important;
+    }
+    .fc .fc-button:hover { background: rgba(255,255,255,.10) !important; }
+    .fc-theme-standard td, .fc-theme-standard th { border-color: rgba(255,255,255,.06); }
+    .fc .fc-scrollgrid, .fc .fc-scrollgrid-section > * { border-color: rgba(255,255,255,.06); }
+
+    .ev-row {
+      display: inline-flex;
+      gap: 6px;
+      align-items: baseline;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+    .ev-title { overflow: hidden; text-overflow: ellipsis; }
+    .ev-time { opacity: .75; flex: 0 0 auto; }
+
     .presence-bar{
       display:flex;
       align-items:center;
@@ -296,7 +322,6 @@
       color:#fff;
       opacity:.65;
     }
-    /* ✅ 접속 상태 점 (인스타 느낌) */
     .presence-avatar::before{
       content:"";
       position:absolute;
@@ -355,7 +380,7 @@
       border: 1px solid var(--line);
       border-radius: 16px;
       padding: 12px;
-      pointer-events: auto; /* ✅ 저장 버튼 탭 무시되는 현상 방지 */
+      pointer-events: auto;
     }
     .modal h4 { margin: 4px 2px 10px; font-size: 14px; font-weight: 600; }
     .modal .grid {
@@ -471,9 +496,6 @@
   </div>
 
   <script>
-    // =========================
-    // ✅ 공통 fetch helpers
-    // =========================
     async function jget(url){
       const r = await fetch(url, { credentials: "same-origin" });
       return await r.json();
@@ -501,9 +523,6 @@
       return await r.json();
     }
 
-    // =========================
-    // ✅ 채팅
-    // =========================
     const chatBox = document.getElementById("chatMessages");
     const chatInput = document.getElementById("chatInput");
     const chatSender = document.getElementById("chatSender");
@@ -516,6 +535,12 @@
       const nameOk = (chatSender.value || "").trim().length > 0;
       sendBtn.disabled = !nameOk;
       chatInput.disabled = !nameOk;
+    }
+
+    function escapeHtml(s){
+      return (s || "").replace(/[&<>"']/g, (c) => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      }[c]));
     }
 
     function formatChatTime(iso){
@@ -574,7 +599,6 @@
       chatPollTimer = setTimeout(pollChat, 2000);
     }
 
-    // ✅ 브라우저/기기별 고유 ID (로그인 없이 "내 글" 구분)
     let CLIENT_ID = localStorage.getItem("chat_client_id");
     if (!CLIENT_ID) {
       try {
@@ -585,7 +609,6 @@
       localStorage.setItem("chat_client_id", CLIENT_ID);
     }
 
-    // ✅ 기기/브라우저별 동물 별명 (client_id가 다르면 자동으로 구분되게)
     const ANIMAL_KEY = "chat_animal_alias";
     const ANIMALS = [
       "고양이","강아지","토끼","여우","곰","사자","호랑이","판다","펭귄","돌고래",
@@ -611,7 +634,6 @@
       localStorage.setItem(ANIMAL_KEY, ANIMAL_ALIAS);
     }
 
-    // ✅ 이름(보낸사람) 기기별 저장 (PC/폰 각각 유지)
     const NAME_KEY = "chat_sender_name";
     const savedName = localStorage.getItem(NAME_KEY);
     if (savedName && savedName.trim()) {
@@ -626,7 +648,6 @@
 
     updateChatEnabled();
 
-    // ✅ 최근 접속자(Presence)
     const presenceListEl = document.getElementById("presenceList");
     let presenceTimer = null;
     let presencePingTimer = null;
@@ -645,18 +666,10 @@
       if (!iso) return "";
       try {
         const diffMin = Math.floor((Date.now() - new Date(iso)) / 60000);
-
-        // ✅ 최근 2분 이내: 접속중
         if (diffMin < 2) return "접속중";
-
-        // ✅ 1~59분: n분전
         if (diffMin < 60) return `${diffMin}분전`;
-
-        // ✅ 1~23시간: n시간전
         const h = Math.floor(diffMin / 60);
         if (h < 24) return `${h}시간전`;
-
-        // ✅ 24시간 이상: 1일전
         return "1일전";
       } catch(e){
         return "";
@@ -665,7 +678,6 @@
 
     async function presenceRefresh(){
       try {
-        // ✅ 2~5명 소수 사용 기준: 하루치까지 가져와서 "n분전/n시간전/1일전" 표기
         const data = await jget("/api/presence/list?minutes=1440");
         if (!data || !data.ok) return;
 
@@ -675,7 +687,6 @@
           last_seen: (u.last_seen || null),
         }));
 
-        // ✅ 최근 순으로 최대 8개만
         const slice = users.slice(0, 8);
 
         const frag = document.createDocumentFragment();
@@ -703,21 +714,13 @@
       presencePing();
       presenceRefresh();
 
-      // 30초마다 접속 유지 신호
       presencePingTimer = setInterval(() => {
         if (!document.hidden) presencePing();
       }, 30000);
 
-      // 15초마다 목록 갱신
       presenceTimer = setInterval(() => {
         if (!document.hidden) presenceRefresh();
       }, 15000);
-    }
-
-    function escapeHtml(s){
-      return (s || "").replace(/[&<>"']/g, (c) => ({
-        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-      }[c]));
     }
 
     document.addEventListener("visibilitychange", () => {
@@ -740,12 +743,10 @@
         chatInput.value = "";
         const res = await jpost("/api/chat/send", { room: CHAT_ROOM, sender, message, client_id: CLIENT_ID });
 
-        // ✅ 서버가 id/created_at을 주면, 폴링 기다리지 말고 즉시 추가
         if (res && res.ok) {
           appendMsg({ id: res.id, sender, message, created_at: res.created_at || "", client_id: CLIENT_ID });
           lastChatId = Math.max(lastChatId, res.id || lastChatId);
         } else {
-          // 실패하면 한 번 더 폴링
           await pollChatOnce();
         }
       } catch(e){
@@ -761,9 +762,6 @@
       if (e.key === "Enter") { e.preventDefault(); sendChat(); }
     });
 
-    // =========================
-    // ✅ 캘린더 + 모달
-    // =========================
     const modalBackdrop = document.getElementById("modalBackdrop");
     const modalTitle = document.getElementById("modalTitle");
     const evTitle = document.getElementById("evTitle");
@@ -829,68 +827,6 @@
       }
     }
 
-    async function refreshMemos(){
-      try {
-        const btn = document.getElementById("refreshMemosBtn");
-        if (btn) btn.classList.add("spinning");
-        location.reload();
-      } finally {
-        const btn = document.getElementById("refreshMemosBtn");
-        if (btn) btn.classList.remove("spinning");
-      }
-    }
-
-    document.getElementById("refreshMemosBtn")?.addEventListener("click", (e) => {
-      e.preventDefault(); e.stopPropagation();
-      refreshMemos();
-    });
-
-    document.getElementById("refreshCalendarBtn")?.addEventListener("click", async (e) => {
-      e.preventDefault(); e.stopPropagation();
-      await refreshCalendar();
-    });
-
-    evSave.addEventListener("click", async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const payload = {
-        title: (evTitle.value || "").trim(),
-        start: evStart.value,
-        end: evEnd.value,
-        memo: (evMemo.value || "").trim(),
-      };
-
-      if (!payload.title || !payload.start) {
-        alert("제목과 시작은 필수입니다.");
-        return;
-      }
-
-      try {
-        if (currentEventId) {
-          await jput(`/api/events/${currentEventId}`, payload);
-        } else {
-          await jpost("/api/events", payload);
-        }
-      } catch(e) {}
-
-      closeModal();
-      await refreshCalendar();
-    });
-
-    evDelete.addEventListener("click", async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!currentEventId) return;
-
-      if (!confirm("삭제할까요?")) return;
-
-      try { await jdel(`/api/events/${currentEventId}`); } catch(e) {}
-      closeModal();
-      await refreshCalendar();
-    });
-
-    // ✅ FullCalendar init
     document.addEventListener("DOMContentLoaded", async () => {
       try {
         const el = document.getElementById("calendar");
@@ -918,7 +854,6 @@
         calendar.render();
         await refreshCalendar();
 
-        // ✅ 채팅 시작
         pollChat();
         startPresence();
       } catch(e) {}
