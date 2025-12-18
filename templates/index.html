@@ -133,6 +133,14 @@
       margin-bottom: 8px;
       align-items: flex-start;
     }
+
+    .msg.me { justify-content: flex-end; }
+    .msg.me .bubble {
+      background: rgba(77,163,255,.16);
+      border-color: rgba(77,163,255,.26);
+    }
+    .msg.me .meta { text-align: right; }
+
     .bubble {
       max-width: 80%;
       padding: 9px 11px;
@@ -445,6 +453,17 @@
     const sendBtn = document.getElementById("sendBtn");
     const CHAT_ROOM = "main";
 
+    // ✅ 브라우저/기기별 고유 ID (로그인 없이 "내 글" 구분)
+    let CLIENT_ID = localStorage.getItem("chat_client_id");
+    if (!CLIENT_ID) {
+      try {
+        CLIENT_ID = (crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+      } catch (e) {
+        CLIENT_ID = (Date.now().toString(36) + Math.random().toString(36).slice(2));
+      }
+      localStorage.setItem("chat_client_id", CLIENT_ID);
+    }
+
     function escapeHtml(s) {
       return (s || "").replace(/[&<>"']/g, (c) => ({
         "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
@@ -488,7 +507,7 @@
 
     function appendMsg(m) {
       const wrap = document.createElement("div");
-      wrap.className = "msg";
+      wrap.className = (m && m.client_id && m.client_id === CLIENT_ID) ? "msg me" : "msg";
 
       const bubble = document.createElement("div");
       bubble.className = "bubble";
@@ -546,11 +565,11 @@
 
       try {
         chatInput.value = "";
-        const res = await jpost("/api/chat/send", { room: CHAT_ROOM, sender, message });
+        const res = await jpost("/api/chat/send", { room: CHAT_ROOM, sender, message, client_id: CLIENT_ID });
 
         // ✅ 서버가 id/created_at을 주면, 폴링 기다리지 말고 즉시 추가
         if (res && res.ok) {
-          appendMsg({ id: res.id, sender, message, created_at: res.created_at || "" });
+          appendMsg({ id: res.id, sender, message, created_at: res.created_at || "", client_id: CLIENT_ID });
           lastChatId = Math.max(lastChatId, res.id || lastChatId);
         } else {
           // 실패하면 한 번 더 폴링
