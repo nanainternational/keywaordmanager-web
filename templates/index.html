@@ -224,12 +224,12 @@
     .chip {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      border-radius: 999px;
+      gap: 6px;
+      padding: 7px 9px;
       background: var(--chip);
       border: 1px solid var(--line);
-      font-size: 13px;
+      border-radius: 999px;
+      font-size: 12px;
       font-weight: 300;
     }
     .chip form { margin: 0; }
@@ -240,53 +240,33 @@
       font-size: 12px;
     }
 
-    /* ✅ 캘린더: 박스 제거 + 크게 */
+    /* ✅ 캘린더 */
     .calendar-wrap {
-      padding: 0;
-      border: none;
-      background: transparent;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px;
     }
     #calendar {
-      width: 100%;
-      min-height: 560px;
-      background: transparent;
+      border-radius: 12px;
+      background: rgba(255,255,255,04);
+      border: 1px solid rgba(255,255,255,08);
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
     }
 
-    .fc { font-size: 13px; font-weight: 300; }
-    .fc .fc-toolbar-title { font-size: 15px; font-weight: 600; }
-    .fc .fc-button {
-      border-radius: 10px !important;
-      border: 1px solid var(--line) !important;
-      background: rgba(255,255,255,.06) !important;
-      color: var(--text) !important;
-      box-shadow: none !important;
-      font-weight: 600 !important;
-    }
-    .fc .fc-button:hover { background: rgba(255,255,255,.10) !important; }
-    .fc-theme-standard td, .fc-theme-standard th { border-color: rgba(255,255,255,.06); }
-    .fc .fc-scrollgrid, .fc .fc-scrollgrid-section > * { border-color: rgba(255,255,255,.06); }
-
-    .ev-row {
-      display: inline-flex;
-      gap: 6px;
-      align-items: baseline;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 100%;
-    }
-    .ev-title { overflow: hidden; text-overflow: ellipsis; }
-    .ev-time { opacity: .75; flex: 0 0 auto; }
+    /* ✅ presence */
     .presence-bar{
       display:flex;
       align-items:center;
       gap:10px;
-      padding:8px 10px;
+      padding:6px 8px;
       border-radius:12px;
       background: rgba(255,255,255,.04);
       border: 1px solid rgba(255,255,255,.08);
       overflow-x:auto;
       -webkit-overflow-scrolling: touch;
+      margin-bottom: 10px;
     }
     .presence-avatars{
       display:flex;
@@ -329,7 +309,7 @@
       background:#9ca3af;
     }
     .presence-avatar.online::before{
-      background:#4da3ff;
+      background:#22c55e;
     }
     .presence-avatar:hover::after{
       content:attr(data-label);
@@ -347,7 +327,6 @@
       z-index:50;
     }
 
-
     @media (max-width: 480px) {
       .wrap { padding: 10px 10px 16px; }
       .chat-input-row { grid-template-columns: 76px 1fr 66px; }
@@ -361,7 +340,7 @@
     .modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,.55);
+      background: rgba(0,0,0,55);
       display: none;
       align-items: center;
       justify-content: center;
@@ -456,33 +435,35 @@
     </div>
   </div>
 
-  <div id="modalBackdrop" class="modal-backdrop">
-    <div class="modal">
-      <h4 id="modalTitle">일정 추가</h4>
+  <!-- ✅ 모달 -->
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h4 id="modalTitle">일정</h4>
 
-      <div class="row">
-        <label>제목</label>
-        <input id="evTitle" type="text" placeholder="예: 미팅 / 발주 / 상담" autocomplete="off" inputmode="text">
+      <div class="grid">
+        <div class="row">
+          <label>제목</label>
+          <input id="evTitle" type="text" autocomplete="off" inputmode="text" placeholder="제목">
+        </div>
+        <div class="row">
+          <label>메모</label>
+          <input id="evMemo" type="text" autocomplete="off" inputmode="text" placeholder="메모(선택)">
+        </div>
       </div>
 
       <div class="grid">
         <div class="row">
           <label>시작</label>
-          <input id="evStart" type="text" placeholder="YYYY-MM-DD 또는 YYYY-MM-DDTHH:mm" autocomplete="off" inputmode="text">
+          <input id="evStart" type="datetime-local">
         </div>
         <div class="row">
-          <label>끝(선택)</label>
-          <input id="evEnd" type="text" placeholder="YYYY-MM-DD 또는 YYYY-MM-DDTHH:mm" autocomplete="off" inputmode="text">
+          <label>끝</label>
+          <input id="evEnd" type="datetime-local">
         </div>
-      </div>
-
-      <div class="row">
-        <label>메모(선택)</label>
-        <textarea id="evMemo" placeholder="내용/메모"></textarea>
       </div>
 
       <div class="actions">
-        <button id="evDelete" class="danger" type="button" style="display:none;">삭제</button>
+        <button id="evDelete" class="danger" type="button">삭제</button>
         <button id="evCancel" type="button">취소</button>
         <button id="evSave" class="primary" type="button">저장</button>
       </div>
@@ -490,52 +471,108 @@
   </div>
 
   <script>
-    async function jget(url) {
-      const r = await fetch(url, { cache: "no-store" });
+    // =========================
+    // ✅ 공통 fetch helpers
+    // =========================
+    async function jget(url){
+      const r = await fetch(url, { credentials: "same-origin" });
       return await r.json();
     }
-    async function jpost(url, body) {
+    async function jpost(url, body){
       const r = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body || {}),
+        credentials: "same-origin",
       });
       return await r.json();
     }
-    async function jput(url, body) {
+    async function jdel(url){
+      const r = await fetch(url, { method: "DELETE", credentials: "same-origin" });
+      return await r.json();
+    }
+    async function jput(url, body){
       const r = await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body || {}),
+        credentials: "same-origin",
       });
-      return await r.json();
-    }
-    async function jdel(url) {
-      const r = await fetch(url, { method: "DELETE" });
       return await r.json();
     }
 
     // =========================
-    // ✅ 채팅 (늦게 뜨는 문제 개선)
-    // - 폴링 2초 -> 0.7초
-    // - send 성공 시 즉시 append
+    // ✅ 채팅
     // =========================
-    let lastChatId = 0;
     const chatBox = document.getElementById("chatMessages");
     const chatInput = document.getElementById("chatInput");
     const chatSender = document.getElementById("chatSender");
     const sendBtn = document.getElementById("sendBtn");
+
     const CHAT_ROOM = "main";
+    let lastChatId = 0;
 
-    // ✅ 이름 입력 전에는 채팅 입력/전송 비활성화
-    function updateChatEnabled() {
-      const name = (chatSender.value || "").trim();
-      const ok = name.length > 0;
-      chatInput.disabled = !ok;
-      sendBtn.disabled = !ok;
+    function updateChatEnabled(){
+      const nameOk = (chatSender.value || "").trim().length > 0;
+      sendBtn.disabled = !nameOk;
+      chatInput.disabled = !nameOk;
     }
-    chatSender.addEventListener("input", updateChatEnabled);
 
+    function formatChatTime(iso){
+      if (!iso) return "";
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString("ko-KR", { hour12: true, month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
+      } catch(e){
+        return "";
+      }
+    }
+
+    function appendMsg(m){
+      const me = (m.client_id && m.client_id === CLIENT_ID);
+
+      const wrap = document.createElement("div");
+      wrap.className = "msg" + (me ? " me" : "");
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.innerHTML = `<b>${escapeHtml(m.sender || "익명")}</b><br>${escapeHtml(m.message || "")}`;
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = formatChatTime(m.created_at);
+
+      const col = document.createElement("div");
+      col.appendChild(bubble);
+      col.appendChild(meta);
+
+      wrap.appendChild(col);
+      chatBox.appendChild(wrap);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    async function pollChatOnce(){
+      const data = await jget(`/api/chat/messages?room=${encodeURIComponent(CHAT_ROOM)}&after_id=${lastChatId}`);
+      if (data && data.ok && Array.isArray(data.messages)) {
+        for (const m of data.messages) {
+          appendMsg(m);
+          lastChatId = Math.max(lastChatId, m.id);
+        }
+      }
+    }
+
+    let chatPollTimer = null;
+    async function pollChat(){
+      if (chatPollTimer) clearTimeout(chatPollTimer);
+
+      if (document.hidden) {
+        chatPollTimer = setTimeout(pollChat, 5000);
+        return;
+      }
+
+      try { await pollChatOnce(); } catch(e) {}
+      chatPollTimer = setTimeout(pollChat, 2000);
+    }
 
     // ✅ 브라우저/기기별 고유 ID (로그인 없이 "내 글" 구분)
     let CLIENT_ID = localStorage.getItem("chat_client_id");
@@ -546,6 +583,8 @@
         CLIENT_ID = (Date.now().toString(36) + Math.random().toString(36).slice(2));
       }
       localStorage.setItem("chat_client_id", CLIENT_ID);
+    }
+
     // ✅ 기기/브라우저별 동물 별명 (client_id가 다르면 자동으로 구분되게)
     const ANIMAL_KEY = "chat_animal_alias";
     const ANIMALS = [
@@ -572,8 +611,6 @@
       localStorage.setItem(ANIMAL_KEY, ANIMAL_ALIAS);
     }
 
-    }
-
     // ✅ 이름(보낸사람) 기기별 저장 (PC/폰 각각 유지)
     const NAME_KEY = "chat_sender_name";
     const savedName = localStorage.getItem(NAME_KEY);
@@ -594,13 +631,17 @@
     let presenceTimer = null;
     let presencePingTimer = null;
 
-    async function presencePing() {
+    async function presencePing(){
       try {
-        await jpost("/api/presence/ping", { client_id: CLIENT_ID, sender: (chatSender.value || "").trim() || "익명", animal: ANIMAL_ALIAS });
-      } catch (e) {}
+        await jpost("/api/presence/ping", {
+          client_id: CLIENT_ID,
+          sender: (chatSender.value || "").trim() || "익명",
+          animal: ANIMAL_ALIAS
+        });
+      } catch(e) {}
     }
 
-    function formatPresenceTime(iso) {
+    function formatPresenceTime(iso){
       if (!iso) return "";
       try {
         const diffMin = Math.floor((Date.now() - new Date(iso)) / 60000);
@@ -617,12 +658,12 @@
 
         // ✅ 24시간 이상: 1일전
         return "1일전";
-      } catch (e) {
+      } catch(e){
         return "";
       }
     }
 
-async function presenceRefresh() {
+    async function presenceRefresh(){
       try {
         // ✅ 2~5명 소수 사용 기준: 하루치까지 가져와서 "n분전/n시간전/1일전" 표기
         const data = await jget("/api/presence/list?minutes=1440");
@@ -634,7 +675,7 @@ async function presenceRefresh() {
           last_seen: (u.last_seen || null),
         }));
 
-        // ✅ 최근 순으로 최대 8개만 (원하면 늘려도 됨)
+        // ✅ 최근 순으로 최대 8개만
         const slice = users.slice(0, 8);
 
         const frag = document.createDocumentFragment();
@@ -652,121 +693,41 @@ async function presenceRefresh() {
         presenceListEl.innerHTML = "";
         presenceListEl.appendChild(frag);
         if (!slice.length) presenceListEl.textContent = "-";
-      } catch (e) {}
+      } catch(e) {}
     }
 
-    function startPresence() {
+    function startPresence(){
       if (presencePingTimer) clearInterval(presencePingTimer);
       if (presenceTimer) clearInterval(presenceTimer);
 
       presencePing();
       presenceRefresh();
 
-      // 20초마다 접속 유지 신호
+      // 30초마다 접속 유지 신호
       presencePingTimer = setInterval(() => {
         if (!document.hidden) presencePing();
       }, 30000);
 
-      // 10초마다 목록 갱신
+      // 15초마다 목록 갱신
       presenceTimer = setInterval(() => {
         if (!document.hidden) presenceRefresh();
       }, 15000);
     }
 
-    function escapeHtml(s) {
+    function escapeHtml(s){
       return (s || "").replace(/[&<>"']/g, (c) => ({
         "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
       }[c]));
     }
 
-    function formatChatTime(iso) {
-      if (!iso) return "";
-      try {
-        const d = new Date(iso);
-        const parts = new Intl.DateTimeFormat("en-US", {
-          timeZone: "Asia/Seoul",
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true
-        }).formatToParts(d);
-
-        const get = (t) => (parts.find(p => p.type === t)?.value || "");
-        const y = get("year");
-        const mo = get("month");
-        const da = get("day");
-        const hourRaw = get("hour");
-        const mi = get("minute");
-        const dayPeriod = (get("dayPeriod") || "").toLowerCase(); // am/pm
-        const h = String(parseInt(hourRaw || "0", 10)); // remove leading 0
-
-        return `-${y}-${mo}-${da} ${dayPeriod}${h}:${mi}`;
-      } catch (e) {
-        return iso;
-      }
-    }
-
-    function setSpinning(btn, on) {
-      if (!btn) return;
-      if (on) btn.classList.add("spinning");
-      else btn.classList.remove("spinning");
-    }
-
-    function appendMsg(m) {
-      const wrap = document.createElement("div");
-      wrap.className = (m && m.client_id && m.client_id === CLIENT_ID) ? "msg me" : "msg";
-
-      const bubble = document.createElement("div");
-      bubble.className = "bubble";
-      bubble.innerHTML = `<b>${escapeHtml(m.sender || "익명")}</b><div style="height:6px"></div>${escapeHtml(m.message)}`;
-
-      const meta = document.createElement("div");
-      meta.className = "meta";
-      meta.textContent = formatChatTime(m.created_at);
-
-      const col = document.createElement("div");
-      col.appendChild(bubble);
-      col.appendChild(meta);
-
-      wrap.appendChild(col);
-      chatBox.appendChild(wrap);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
-
-    async function pollChatOnce() {
-      const data = await jget(`/api/chat/messages?room=${encodeURIComponent(CHAT_ROOM)}&after_id=${lastChatId}`);
-      if (data && data.ok && Array.isArray(data.messages)) {
-        for (const m of data.messages) {
-          appendMsg(m);
-          lastChatId = Math.max(lastChatId, m.id);
-        }
-      }
-    }
-
-    let chatPollTimer = null;
-
-    async function pollChat() {
-      if (chatPollTimer) clearTimeout(chatPollTimer);
-
-      if (document.hidden) {
-        chatPollTimer = setTimeout(pollChat, 5000);
-        return;
-      }
-
-      try { await pollChatOnce(); } catch (e) {}
-
-      chatPollTimer = setTimeout(pollChat, 2000);
-    }
-
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) pollChat();
-
-    startPresence();
+      if (!document.hidden) {
+        pollChat();
+        startPresence();
+      }
     });
 
-    async function sendChat() {
+    async function sendChat(){
       saveName();
       const sender = (chatSender.value || "익명").trim();
       const message = (chatInput.value || "").trim();
@@ -787,8 +748,8 @@ async function presenceRefresh() {
           // 실패하면 한 번 더 폴링
           await pollChatOnce();
         }
-      } catch (e) {
-        try { await pollChatOnce(); } catch (e2) {}
+      } catch(e){
+        try { await pollChatOnce(); } catch(e2) {}
       } finally {
         updateChatEnabled();
         chatInput.focus();
@@ -801,9 +762,7 @@ async function presenceRefresh() {
     });
 
     // =========================
-    // ✅ 캘린더 + 모달 (저장 버튼 안눌림 개선)
-    // - 버튼 type=button
-    // - 클릭시 stopPropagation
+    // ✅ 캘린더 + 모달
     // =========================
     const modalBackdrop = document.getElementById("modalBackdrop");
     const modalTitle = document.getElementById("modalTitle");
@@ -818,164 +777,152 @@ async function presenceRefresh() {
     let currentEventId = null;
     let calendar = null;
 
-    function openModal(mode, payload) {
+    function openModal(mode, payload){
       currentEventId = payload?.id ?? null;
+      modalTitle.textContent = (mode === "new") ? "일정 추가" : "일정 수정";
 
-      modalTitle.textContent = mode === "edit" ? "일정 수정" : "일정 추가";
-      evDelete.style.display = mode === "edit" ? "inline-flex" : "none";
+      evTitle.value = payload?.title ?? "";
+      evMemo.value = payload?.memo ?? "";
 
-      evTitle.value = payload?.title || "";
-      evStart.value = payload?.start || "";
-      evEnd.value = payload?.end || "";
-      evMemo.value = payload?.memo || "";
+      evStart.value = payload?.start ?? "";
+      evEnd.value = payload?.end ?? "";
+
+      evDelete.style.display = (mode === "edit") ? "inline-flex" : "none";
 
       modalBackdrop.style.display = "flex";
+      setTimeout(() => { evTitle.focus(); }, 10);
     }
 
-    function closeModal() {
+    function closeModal(){
       modalBackdrop.style.display = "none";
-      currentEventId = null;
     }
 
-    evCancel.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); closeModal(); });
     modalBackdrop.addEventListener("click", (e) => {
       if (e.target === modalBackdrop) closeModal();
+    });
+
+    evCancel.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); closeModal(); });
+
+    async function refreshCalendar(){
+      try {
+        const btn = document.getElementById("refreshCalendarBtn");
+        if (btn) btn.classList.add("spinning");
+
+        const data = await jget("/api/events");
+        if (!data || !data.ok) return;
+
+        const events = (data.events || []).map(ev => ({
+          id: ev.id,
+          title: ev.title || "",
+          start: ev.start || "",
+          end: ev.end || "",
+          allDay: !!ev.allDay,
+          extendedProps: { memo: ev.memo || "" },
+        }));
+
+        calendar.removeAllEvents();
+        calendar.addEventSource(events);
+      } catch(e) {
+      } finally {
+        const btn = document.getElementById("refreshCalendarBtn");
+        if (btn) btn.classList.remove("spinning");
+      }
+    }
+
+    async function refreshMemos(){
+      try {
+        const btn = document.getElementById("refreshMemosBtn");
+        if (btn) btn.classList.add("spinning");
+        location.reload();
+      } finally {
+        const btn = document.getElementById("refreshMemosBtn");
+        if (btn) btn.classList.remove("spinning");
+      }
+    }
+
+    document.getElementById("refreshMemosBtn")?.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      refreshMemos();
+    });
+
+    document.getElementById("refreshCalendarBtn")?.addEventListener("click", async (e) => {
+      e.preventDefault(); e.stopPropagation();
+      await refreshCalendar();
     });
 
     evSave.addEventListener("click", async (e) => {
       e.preventDefault();
       e.stopPropagation();
 
-      const title = (evTitle.value || "").trim();
-      const start = (evStart.value || "").trim();
-      const end = (evEnd.value || "").trim();
-      const memo = (evMemo.value || "").trim();
+      const payload = {
+        title: (evTitle.value || "").trim(),
+        start: evStart.value,
+        end: evEnd.value,
+        memo: (evMemo.value || "").trim(),
+      };
 
-      if (!title || !start) return;
-
-      evSave.disabled = true;
+      if (!payload.title || !payload.start) {
+        alert("제목과 시작은 필수입니다.");
+        return;
+      }
 
       try {
         if (currentEventId) {
-          await jput(`/api/events/${currentEventId}`, { title, start, end: end || null, memo });
+          await jput(`/api/events/${currentEventId}`, payload);
         } else {
-          await jpost("/api/events", { title, start, end: end || null, allDay: false, memo });
+          await jpost("/api/events", payload);
         }
-        closeModal();
-        calendar.refetchEvents();
-      } catch (e2) {
-      } finally {
-        evSave.disabled = false;
-      }
+      } catch(e) {}
+
+      closeModal();
+      await refreshCalendar();
     });
 
     evDelete.addEventListener("click", async (e) => {
       e.preventDefault();
       e.stopPropagation();
-
       if (!currentEventId) return;
-      if (!confirm("이 일정을 삭제할까요?")) return;
 
-      evDelete.disabled = true;
+      if (!confirm("삭제할까요?")) return;
 
+      try { await jdel(`/api/events/${currentEventId}`); } catch(e) {}
+      closeModal();
+      await refreshCalendar();
+    });
+
+    // ✅ FullCalendar init
+    document.addEventListener("DOMContentLoaded", async () => {
       try {
-        await jdel(`/api/events/${currentEventId}`);
-        closeModal();
-        calendar.refetchEvents();
-      } catch (e2) {
-      } finally {
-        evDelete.disabled = false;
-      }
-    });
+        const el = document.getElementById("calendar");
+        calendar = new FullCalendar.Calendar(el, {
+          initialView: "dayGridMonth",
+          height: "auto",
+          selectable: true,
+          editable: false,
+          nowIndicator: false,
 
-    async function initCalendar() {
-      const calEl = document.getElementById("calendar");
-
-      calendar = new FullCalendar.Calendar(calEl, {
-        initialView: "dayGridMonth",
-          timeZone: "Asia/Seoul",
-      displayEventTime: false,
-        height: "auto",
-        expandRows: true,
-        nowIndicator: true,
-
-        selectable: true,
-        selectMirror: true,
-        longPressDelay: 180,
-        selectLongPressDelay: 180,
-
-        events: async (info, success, failure) => {
-          try {
-            const data = await jget("/api/events");
-            success(data || []);
-          } catch (e) {
-            failure(e);
+          dateClick: (info) => {
+            openModal("new", { start: info.dateStr + "T09:00", end: info.dateStr + "T10:00" });
+          },
+          eventClick: (info) => {
+            const ev = info.event;
+            openModal("edit", {
+              id: ev.id,
+              title: ev.title,
+              start: ev.start ? ev.start.toISOString().slice(0,16) : "",
+              end: ev.end ? ev.end.toISOString().slice(0,16) : "",
+              memo: ev.extendedProps?.memo || ""
+            });
           }
-        },
+        });
+        calendar.render();
+        await refreshCalendar();
 
-        dateClick: (arg) => {
-          openModal("add", { title: "", start: arg.dateStr, end: "", memo: "" });
-        },
-
-        select: (sel) => {
-          openModal("add", { title: "", start: sel.startStr, end: sel.endStr || "", memo: "" });
-        },
-
-        eventClick: (info) => {
-          const e = info.event;
-          openModal("edit", {
-            id: e.id,
-            title: e.title,
-            start: e.startStr,
-            end: e.endStr || "",
-            memo: (e.extendedProps && e.extendedProps.memo) ? e.extendedProps.memo : ""
-          });
-        },
-
-        eventContent: (arg) => {
-          const wrap = document.createElement("span");
-          wrap.className = "ev-row";
-
-          const title = document.createElement("span");
-          title.className = "ev-title";
-          title.textContent = arg.event.title || "";
-
-          const time = document.createElement("span");
-          time.className = "ev-time";
-          time.textContent = arg.timeText ? ` ${arg.timeText}` : "";
-
-          wrap.appendChild(title);
-          if (arg.timeText) wrap.appendChild(time);
-
-          return { domNodes: [wrap] };
-        }
-      });
-
-      calendar.render();
-    }
-
-    pollChat();
-
-    startPresence();
-    initCalendar();
-
-  const refreshMemosBtn = document.getElementById("refreshMemosBtn");
-  if (refreshMemosBtn) {
-    refreshMemosBtn.addEventListener("click", () => {
-      setSpinning(refreshMemosBtn, true);
-      // 화면이 바로 이동되기 전에 아이콘이 조금이라도 돌아가게 딜레이
-      setTimeout(() => window.location.reload(), 60);
+        // ✅ 채팅 시작
+        pollChat();
+        startPresence();
+      } catch(e) {}
     });
-  }
-
-  const refreshCalendarBtn = document.getElementById("refreshCalendarBtn");
-  if (refreshCalendarBtn) {
-    refreshCalendarBtn.addEventListener("click", () => {
-      setSpinning(refreshCalendarBtn, true);
-      if (calendar) calendar.refetchEvents();
-      setTimeout(() => setSpinning(refreshCalendarBtn, false), 800);
-    });
-  }
   </script>
 </body>
 </html>
