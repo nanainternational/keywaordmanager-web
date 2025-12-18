@@ -518,29 +518,32 @@ def presence_list():
             for r in rows
         ]
     })
-    
+
+
 # ===============================
 # ✅ PWA (manifest / service worker)
+#    - iOS Web Push는 /service-worker.js 가 "루트"로 열려야 함
+#    - 파일을 static/에 두든, 루트에 두든 둘 다 대응(404 방지)
 # ===============================
 from flask import send_from_directory
 
+def _send_file_from_static_or_root(filename: str, mimetype: str):
+    # 1) static/ 우선
+    static_dir = app.static_folder  # 기본: <project>/static
+    if static_dir and os.path.exists(os.path.join(static_dir, filename)):
+        return send_from_directory(static_dir, filename, mimetype=mimetype, max_age=0)
+    # 2) 프로젝트 루트(app.root_path) 폴백
+    root_dir = app.root_path
+    return send_from_directory(root_dir, filename, mimetype=mimetype, max_age=0)
+
 @app.route("/service-worker.js")
 def service_worker():
-    return send_from_directory(
-        "static",
-        "service-worker.js",
-        mimetype="application/javascript",
-        max_age=0
-    )
+    return _send_file_from_static_or_root("service-worker.js", "application/javascript")
 
 @app.route("/manifest.webmanifest")
 def webmanifest():
-    return send_from_directory(
-        "static",
-        "manifest.webmanifest",
-        mimetype="application/manifest+json",
-        max_age=0
-    )
+    return _send_file_from_static_or_root("manifest.webmanifest", "application/manifest+json")
+
 
 if __name__ == "__main__":
     ensure_db()
