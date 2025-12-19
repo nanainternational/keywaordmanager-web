@@ -5,12 +5,16 @@ from datetime import datetime
 
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_from_directory, make_response
 
 # ✅ psycopg (v3) 사용: Python 3.13에서 psycopg2 바이너리 호환 이슈 회피
 import psycopg
 
 app = Flask(__name__)
+
+# ✅ Static dir (Render/gunicorn에서도 안전한 절대경로)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 # ===============================
 # ✅ Push (PWA Web Push)
@@ -547,26 +551,33 @@ def presence_list():
 # ===============================
 # ✅ PWA (manifest / service worker)
 #    - iOS Web Push는 /service-worker.js 가 "루트"로 열려야 함
-#    - 파일을 static/에 두든, 루트에 두든 둘 다 대응(404 방지)
+#    - Render/gunicorn 환경에서 200인데 0바이트로 내려가는 문제를 피하려고
+#      static 경로를 __file__ 기준 절대경로로 고정해서 서빙
 # ===============================
-from flask import send_from_directory
-
-def _send_file_from_static_or_root(filename: str, mimetype: str):
-    # 1) static/ 우선
-    static_dir = app.static_folder  # 기본: <project>/static
-    if static_dir and os.path.exists(os.path.join(static_dir, filename)):
-        return send_from_directory(static_dir, filename, mimetype=mimetype, max_age=0)
-    # 2) 프로젝트 루트(app.root_path) 폴백
-    root_dir = app.root_path
-    return send_from_directory(root_dir, filename, mimetype=mimetype, max_age=0)
 
 @app.route("/service-worker.js")
 def service_worker():
-    return _send_file_from_static_or_root("service-worker.js", "application/javascript")
+    resp = make_response(
+        send_from_directory(
+            STATIC_DIR,
+            "service-worker.js",
+            mimetype="application/javascript"
+        )
+    )
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
 
 @app.route("/manifest.webmanifest")
 def webmanifest():
-    return _send_file_from_static_or_root("manifest.webmanifest", "application/manifest+json")
+    resp = make_response(
+        send_from_directory(
+            STATIC_DIR,
+            "manifest.webmanifest",
+            mimetype="application/manifest+json"
+        )
+    )
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
 
 
 if __name__ == "__main__":
