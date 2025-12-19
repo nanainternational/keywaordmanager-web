@@ -1,7 +1,6 @@
 import os
 import re
 import threading
-from push_routes import push_bp
 from datetime import datetime
 
 import requests
@@ -12,7 +11,14 @@ from flask import Flask, request, jsonify, render_template
 import psycopg
 
 app = Flask(__name__)
+
+# ===============================
+# ✅ PWA Push (Web Push)
+# ===============================
+from push_routes import push_bp, notify_all
 app.register_blueprint(push_bp)
+
+
 # ===============================
 # ✅ TZ
 # ===============================
@@ -447,6 +453,17 @@ def send_chat():
             )
             msg_id = cur.fetchone()[0]
         conn.commit()
+
+    # ✅ Push 알림 (옵션): 새 메시지 도착 시 구독자에게 푸시 전송
+    # - 실패해도 채팅 저장/응답은 정상 처리되도록 try/except
+    try:
+        notify_all(
+            title=f"새 메시지: {sender}",
+            body=(message[:120] + ("…" if len(message) > 120 else "")),
+            url="/",
+        )
+    except Exception as _e:
+        print("[push] notify_all failed:", _e)
 
     return jsonify({"ok": True, "id": msg_id, "created_at": now.isoformat(), "client_id": client_id})
 
