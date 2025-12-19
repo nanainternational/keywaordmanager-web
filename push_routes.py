@@ -75,7 +75,7 @@ def send_test():
         return jsonify({"ok": False, "error": "VAPID keys missing"}), 500
 
     # ✅ vapid subject: 실제 이메일(권장). 환경변수로 바꿀 수 있게 함.
-    vapid_sub = (os.environ.get("VAPID_SUB") or "mailto:push@nanainter.com").strip()
+    vapid_sub = (os.environ.get("VAPID_SUB") or "mailto:secsiboy1@gmail.com").strip()
     if not vapid_sub.startswith("mailto:"):
         vapid_sub = "mailto:" + vapid_sub
 
@@ -133,7 +133,7 @@ def send_push(payload: dict):
     if not priv:
         return
 
-    vapid_sub = (os.environ.get("VAPID_SUB") or "mailto:push@nanainter.com").strip()
+    vapid_sub = (os.environ.get("VAPID_SUB") or "mailto:secsiboy1@gmail.com").strip()
     if not vapid_sub.startswith("mailto:"):
         vapid_sub = "mailto:" + vapid_sub
 
