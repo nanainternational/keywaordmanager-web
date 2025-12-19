@@ -13,10 +13,15 @@ import psycopg
 app = Flask(__name__)
 
 # ===============================
-# ✅ PWA Push (Web Push)
+# ✅ Push (PWA Web Push)
 # ===============================
-from push_routes import push_bp, notify_all
-app.register_blueprint(push_bp)
+try:
+    from push_routes import push_bp, send_push  # noqa: F401
+    app.register_blueprint(push_bp)
+except Exception as _e:
+    # push_routes.py가 없거나(또는 의존성 미설치)일 때도 기존 앱은 동작하게 둠
+    push_bp = None
+    send_push = None
 
 
 # ===============================
@@ -454,16 +459,17 @@ def send_chat():
             msg_id = cur.fetchone()[0]
         conn.commit()
 
-    # ✅ Push 알림 (옵션): 새 메시지 도착 시 구독자에게 푸시 전송
-    # - 실패해도 채팅 저장/응답은 정상 처리되도록 try/except
-    try:
-        notify_all(
-            title=f"새 메시지: {sender}",
-            body=(message[:120] + ("…" if len(message) > 120 else "")),
-            url="/",
-        )
-    except Exception as _e:
-        print("[push] notify_all failed:", _e)
+
+    # ✅ 새 채팅 메시지 푸시 (구독된 기기들로 전송)
+    if send_push:
+        try:
+            send_push({
+                "title": "새 메시지",
+                "body": f"{sender}: {message}",
+                "url": "/"
+            })
+        except Exception as _pe:
+            print("[push] send_push failed:", _pe)
 
     return jsonify({"ok": True, "id": msg_id, "created_at": now.isoformat(), "client_id": client_id})
 
