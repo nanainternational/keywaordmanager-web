@@ -1,6 +1,5 @@
 // static/pwa-push.js
 
-// base64url -> Uint8Array
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -25,7 +24,6 @@ async function saveSubscriptionToServer(sub) {
   const res = await fetch("/api/push/subscribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    // ✅ 서버가 subscription 래핑을 기대하는 경우가 많아서 이 형태로 보냄
     body: JSON.stringify({ subscription: sub }),
   });
   const text = await res.text();
@@ -33,12 +31,10 @@ async function saveSubscriptionToServer(sub) {
   return text;
 }
 
-// ✅ HTML onclick에서 바로 호출되는 전역 함수 2개를 만들어준다.
 window.pwaEnableNotifications = async function pwaEnableNotifications() {
   try {
     console.log("[PWA] enable clicked. perm(before) =", Notification.permission);
 
-    // 권한 요청
     const perm = await Notification.requestPermission();
     console.log("[PWA] perm(after) =", perm);
     if (perm !== "granted") {
@@ -46,10 +42,8 @@ window.pwaEnableNotifications = async function pwaEnableNotifications() {
       return;
     }
 
-    // SW 준비
     const reg = await navigator.serviceWorker.ready;
 
-    // 이미 구독 있으면 재사용
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
       const vapidKey = await getVapidPublicKey();
@@ -64,7 +58,6 @@ window.pwaEnableNotifications = async function pwaEnableNotifications() {
       console.log("[PWA] existing subscription found");
     }
 
-    // 서버 저장
     const saved = await saveSubscriptionToServer(sub);
     console.log("[PWA] subscription saved:", saved);
 
@@ -104,7 +97,6 @@ window.pwaTestPush = async function pwaTestPush() {
   }
 };
 
-// 기존에 SW 등록 로그 찍는 부분 유지 (이미 너 콘솔에 찍히고 있음)
 (async () => {
   try {
     await registerSW();
