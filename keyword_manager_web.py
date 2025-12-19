@@ -1,6 +1,7 @@
 import os
 import re
 import threading
+from push_routes import push_bp
 from datetime import datetime
 
 import requests
@@ -11,7 +12,7 @@ from flask import Flask, request, jsonify, render_template
 import psycopg
 
 app = Flask(__name__)
-
+app.register_blueprint(push_bp)
 # ===============================
 # ✅ TZ
 # ===============================
