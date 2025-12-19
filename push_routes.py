@@ -71,7 +71,7 @@ def send_test():
                 subscription_info=sub,
                 data=message,
                 vapid_private_key=priv,
-                vapid_claims={"sub": "mailto:admin@example.com"},
+                vapid_claims={"sub": "mailto:secsiboy1@gmail.com"},
             )
             sent += 1
         except WebPushException:
