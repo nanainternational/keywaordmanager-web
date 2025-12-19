@@ -3,7 +3,6 @@ import re
 import threading
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template, send_from_directory
-
 # ===============================
 # ✅ Flask
 # ===============================
@@ -18,15 +17,6 @@ except Exception as e:
     CORS = None
     print("⚠️ Flask-Cors not available:", repr(e))
 # ====================================================================
-
-@app.route("/health", methods=["GET", "HEAD"])
-def health_check():
-    return "ok", 200
-
-@app.route("/favicon.ico", methods=["GET", "HEAD"])
-def favicon():
-    return "", 204
-
 # ===============================
 # ✅ Push (Blueprint)
 # ===============================
@@ -125,13 +115,21 @@ _init_db()
 # ===============================
 # ✅ Static / Templates
 # ===============================
-@app.route("/", methods=["GET", "POST", "OPTIONS", "HEAD"])
+@app.route("/", methods=["GET","POST","OPTIONS","HEAD"])
 def index():
     # Some browsers/extensions (or stray forms) may POST to "/".
-    # We keep the page GET-able, and make POST a no-op so it never 405s.
     if request.method in ("POST", "OPTIONS"):
         return "", 204
-    return render_template("index.html")@app.route("/rate")
+    return render_template("index.html")
+
+@app.route("/health", methods=["GET", "HEAD"]) 
+def health_check():
+    return "ok", 200
+
+@app.route("/favicon.ico", methods=["GET", "HEAD"]) 
+def favicon():
+    return "", 204
+@app.route("/rate")
 def rate_page():
     return render_template("rate.html")
 
