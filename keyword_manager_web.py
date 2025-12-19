@@ -9,7 +9,7 @@ from flask import Flask, request, jsonify, render_template, send_from_directory
 # ===============================
 app = Flask(__name__)
 
-# ===== Flask-Cors safe guard (no hard import) =====
+# ===== Flask-Cors safe guard (server must not crash if missing) =====
 try:
     import importlib
     CORS = importlib.import_module("flask_cors").CORS
@@ -17,7 +17,15 @@ try:
 except Exception as e:
     CORS = None
     print("⚠️ Flask-Cors not available:", repr(e))
-# ================================================
+# ====================================================================
+
+@app.route("/health", methods=["GET", "HEAD"])
+def health_check():
+    return "ok", 200
+
+@app.route("/favicon.ico", methods=["GET", "HEAD"])
+def favicon():
+    return "", 204
 
 # ===============================
 # ✅ Push (Blueprint)
