@@ -125,12 +125,13 @@ _init_db()
 # ===============================
 # ✅ Static / Templates
 # ===============================
-@app.route("/")
+@app.route("/", methods=["GET", "POST", "OPTIONS", "HEAD"])
 def index():
-    return render_template("index.html")
-
-
-@app.route("/rate")
+    # Some browsers/extensions (or stray forms) may POST to "/".
+    # We keep the page GET-able, and make POST a no-op so it never 405s.
+    if request.method in ("POST", "OPTIONS"):
+        return "", 204
+    return render_template("index.html")@app.route("/rate")
 def rate_page():
     return render_template("rate.html")
 
