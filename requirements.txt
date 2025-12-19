@@ -1,12 +1,9 @@
 Flask==3.0.3
 gunicorn==22.0.0
 Flask-Cors==4.0.1
-
 requests==2.32.3
 beautifulsoup4==4.12.3
-
-psycopg[binary]==3.2.1
+psycopg[binary]==3.2.13
 pytz==2024.1
-
 pywebpush==1.14.0
 cryptography==43.0.1
