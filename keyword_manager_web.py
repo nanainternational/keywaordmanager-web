@@ -133,6 +133,7 @@ def ensure_db():
 
             conn.commit()
         _DB_READY = True
+
 def _ensure_calendar_events_columns(cur):
     cur.execute("select column_name from information_schema.columns where table_schema='public' and table_name='calendar_events'")
     cols = {r[0] for r in cur.fetchall()}
@@ -463,7 +464,6 @@ def send_chat():
             msg_id = cur.fetchone()[0]
         conn.commit()
 
-
     # ✅ 새 채팅 메시지 푸시 (구독된 기기들로 전송)
     if send_push:
         try:
@@ -476,7 +476,6 @@ def send_chat():
             print("[push] send_push failed:", _pe)
 
     return jsonify({"ok": True, "id": msg_id, "created_at": now.isoformat(), "client_id": client_id})
-
 
 # ===============================
 # ✅ 최근 접속자(Presence) API
@@ -547,38 +546,31 @@ def presence_list():
         ]
     })
 
-
 # ===============================
 # ✅ PWA (manifest / service worker)
 #    - iOS Web Push는 /service-worker.js 가 "루트"로 열려야 함
-#    - Render/gunicorn 환경에서 200인데 0바이트로 내려가는 문제를 피하려고
-#      static 경로를 __file__ 기준 절대경로로 고정해서 서빙
+#    - 파일이 static/에 있든, 프로젝트 루트에 있든 둘 다 대응(404 방지)
 # ===============================
+
+def _send_file_from_static_or_root(filename: str, mimetype: str):
+    # 1) static/ 우선
+    if os.path.exists(os.path.join(STATIC_DIR, filename)):
+        resp = make_response(send_from_directory(STATIC_DIR, filename, mimetype=mimetype))
+        resp.headers["Cache-Control"] = "no-store, max-age=0"
+        return resp
+
+    # 2) 프로젝트 루트(BASE_DIR) 폴백
+    resp = make_response(send_from_directory(BASE_DIR, filename, mimetype=mimetype))
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
 
 @app.route("/service-worker.js")
 def service_worker():
-    resp = make_response(
-        send_from_directory(
-            STATIC_DIR,
-            "service-worker.js",
-            mimetype="application/javascript"
-        )
-    )
-    resp.headers["Cache-Control"] = "no-store, max-age=0"
-    return resp
+    return _send_file_from_static_or_root("service-worker.js", "application/javascript")
 
 @app.route("/manifest.webmanifest")
 def webmanifest():
-    resp = make_response(
-        send_from_directory(
-            STATIC_DIR,
-            "manifest.webmanifest",
-            mimetype="application/manifest+json"
-        )
-    )
-    resp.headers["Cache-Control"] = "no-store, max-age=0"
-    return resp
-
+    return _send_file_from_static_or_root("manifest.webmanifest", "application/manifest+json")
 
 if __name__ == "__main__":
     ensure_db()
