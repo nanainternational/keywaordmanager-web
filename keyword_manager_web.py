@@ -3,13 +3,18 @@ import re
 import threading
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template, send_from_directory
-from flask_cors import CORS
+try:
+    from flask_cors import CORS
+except Exception as _cors_e:
+    CORS = None
+    print("⚠️ Flask-Cors not available:", repr(_cors_e))
 
 # ===============================
 # ✅ Flask
 # ===============================
 app = Flask(__name__)
-CORS(app)
+if CORS:
+    CORS(app)
 
 # ===============================
 # ✅ Push (Blueprint)
