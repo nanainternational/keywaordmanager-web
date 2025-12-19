@@ -4,3 +4,4 @@ beautifulsoup4
 gunicorn
 psycopg[binary]
 pytz
+pywebpush==1.14.0
