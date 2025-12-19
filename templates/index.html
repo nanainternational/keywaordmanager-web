@@ -11,9 +11,7 @@
 <link rel="apple-touch-icon" sizes="512x512" href="/static/icons/icon-512.png">
 
 <!-- viewport 없으면 반드시 추가 -->
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  
-  <!-- ✅ 모바일 입력창 눌렀을 때 확대(줌) 방지 -->
+<!-- ✅ 모바일 입력창 눌렀을 때 확대(줌) 방지 -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 
   <title>Keyword Manager Web</title>
@@ -436,6 +434,10 @@
     <div class="section">
       <div class="section-title">
         <h3>채팅</h3>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="mini" type="button" onclick="pwaEnableNotifications((document.getElementById('chatSender')?.value||'익명').trim()||'익명')">알림 켜기</button>
+          <button class="mini" type="button" onclick="pwaTestPush((document.getElementById('chatSender')?.value||'익명').trim()||'익명')">푸시 테스트</button>
+        </div>
       </div>
 
       <div class="presence-bar">
@@ -519,6 +521,8 @@
       </div>
     </div>
   </div>
+
+  <script src="/static/pwa-push.js"></script>
 
   <script>
     // =========================
