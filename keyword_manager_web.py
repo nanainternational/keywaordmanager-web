@@ -3,10 +3,34 @@ import re
 import threading
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template, send_from_directory
+
+def _safe_render(template_name: str, **context):
+    """Render template if available; otherwise return a minimal HTML.
+    Prevents 500 when templates are missing/mispackaged on Render."""
+    try:
+        return render_template(template_name, **context)
+    except Exception as e:
+        print("⚠️ Template render failed:", template_name, repr(e))
+        # Minimal fallback page
+        return (
+            "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'/>"
+            "<title>Keyword Manager</title></head><body>"
+            "<h3>Keyword Manager</h3>"
+            "<p>Template missing or failed to render: <b>%s</b></p>"
+            "</body></html>" % template_name,
+            200,
+            {"Content-Type": "text/html; charset=utf-8"},
+        )
+
 # ===============================
 # ✅ Flask
 # ===============================
 app = Flask(__name__)
+
+# ===== Startup diagnostics (Render) =====
+print('✅ App boot: keyword_manager_web loaded')
+print('✅ DATABASE_URL set:', bool(os.environ.get('DATABASE_URL')))
+# =======================================
 
 # ===== Flask-Cors safe guard (server must not crash if missing) =====
 try:
@@ -120,7 +144,7 @@ def index():
     # Some browsers/extensions (or stray forms) may POST to "/".
     if request.method in ("POST", "OPTIONS"):
         return "", 204
-    return render_template("index.html")
+    return _safe_render("index.html")
 
 @app.route("/health", methods=["GET", "HEAD"]) 
 def health_check():
@@ -131,7 +155,7 @@ def favicon():
     return "", 204
 @app.route("/rate")
 def rate_page():
-    return render_template("rate.html")
+    return _safe_render("rate.html")
 
 
 # ===============================
@@ -414,6 +438,24 @@ def api_presence_list():
 # ===============================
 # ✅ Run
 # ===============================
+
+
+@app.errorhandler(Exception)
+def _handle_unexpected_error(e):
+    # Log full error to Render logs
+    print('❌ Unhandled error:', repr(e))
+    # If API call, return JSON
+    try:
+        if request.path.startswith('/api/'):
+            return jsonify({'ok': False, 'error': str(e)}), 500
+    except Exception:
+        pass
+    # Otherwise show a minimal page
+    return (
+        '<h3>Internal Server Error</h3><pre>%s</pre>' % (str(e),),
+        500,
+        {'Content-Type': 'text/html; charset=utf-8'},
+    )
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="0.0.0.0", port=port)
