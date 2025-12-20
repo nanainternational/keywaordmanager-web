@@ -138,8 +138,8 @@ def ensure_db():
                 created_at timestamptz not null default now(),
                 updated_at timestamptz not null default now()
                 )
-    """
-)
+                """
+                )
 
             conn.commit()
         _DB_READY = True
