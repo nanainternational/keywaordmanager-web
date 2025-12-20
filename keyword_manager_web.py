@@ -80,8 +80,6 @@ def ensure_db():
                         message text,
                         created_at timestamptz not null default now()
                     )
-                    """
-                )
 
 # push_subscriptions (PWA 푸시 구독 저장)
 cur.execute(
@@ -97,6 +95,8 @@ cur.execute(
     )
     '''
 )
+                    """
+                )
                 # ✅ client_id 컬럼이 없으면 추가 (내/남 구분)
                 cur.execute(
                     """
@@ -620,9 +620,6 @@ def _guess_platform(user_agent: str) -> str:
         return "ios"
     return "desktop"
 
-def _ensure_push_subscription_cols():
-    ensure_db()
-
 @app.route("/api/push/subscribe", methods=["POST"])
 def api_push_subscribe():
     """
@@ -633,7 +630,7 @@ def api_push_subscribe():
       "subscription": { ...PushSubscription... }
     }
     """
-    _ensure_push_subscription_cols()
+    ensure_db()
     data = request.get_json(silent=True) or {}
     client_id = (data.get("client_id") or "").strip()
     platform = (data.get("platform") or "").strip().lower()
@@ -670,7 +667,7 @@ def api_push_subscribe():
 @app.route("/api/push/unsubscribe", methods=["POST"])
 def api_push_unsubscribe():
     """body: { "endpoint": "..." }"""
-    _ensure_push_subscription_cols()
+    ensure_db()
     data = request.get_json(silent=True) or {}
     endpoint = (data.get("endpoint") or "").strip()
     if not endpoint:
@@ -750,7 +747,7 @@ def api_admin_push_send():
     if not _admin_key_ok(request):
         return jsonify({"ok": False, "error": "unauthorized"}), 403
 
-    _ensure_push_subscription_cols()
+    ensure_db()
 
     data = request.get_json(silent=True) or {}
     title = (data.get("title") or "공지").strip()
