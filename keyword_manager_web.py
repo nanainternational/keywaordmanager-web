@@ -80,21 +80,6 @@ def ensure_db():
                         message text,
                         created_at timestamptz not null default now()
                     )
-
-# push_subscriptions (PWA 푸시 구독 저장)
-cur.execute(
-    '''
-    create table if not exists push_subscriptions(
-        id bigserial primary key,
-        client_id text,
-        platform text,
-        endpoint text unique,
-        subscription jsonb not null,
-        created_at timestamptz not null default now(),
-        updated_at timestamptz not null default now()
-    )
-    '''
-)
                     """
                 )
                 # ✅ client_id 컬럼이 없으면 추가 (내/남 구분)
@@ -140,6 +125,21 @@ cur.execute(
                 cur.execute("alter table presence add column if not exists animal text")
                 cur.execute("alter table presence add column if not exists last_seen timestamptz not null default now()")
                 cur.execute("alter table presence add column if not exists user_agent text")
+
+# ✅ push_subscriptions (PWA 푸시 구독 저장)
+cur.execute(
+    """
+    create table if not exists push_subscriptions(
+        id bigserial primary key,
+        client_id text,
+        platform text,
+        endpoint text unique,
+        subscription jsonb not null,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+    )
+    """
+)
 
             conn.commit()
         _DB_READY = True
@@ -588,7 +588,6 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=port)
 
 
-
 # ===============================
 # ✅ ADMIN PUSH API
 # ===============================
@@ -647,7 +646,7 @@ def api_push_subscribe():
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    '''
+                    """
                     insert into push_subscriptions (client_id, platform, endpoint, subscription)
                     values (%s, %s, %s, %s::jsonb)
                     on conflict (endpoint) do update set
@@ -655,7 +654,7 @@ def api_push_subscribe():
                         platform = excluded.platform,
                         subscription = excluded.subscription,
                         updated_at = now()
-                    ''',
+                    """,
                     (client_id, platform, endpoint, _json.dumps(sub, ensure_ascii=False)),
                 )
             conn.commit()
