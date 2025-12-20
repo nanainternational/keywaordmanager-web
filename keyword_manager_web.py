@@ -16,16 +16,11 @@ app = Flask(__name__)
 # ✅ PWA Push (Web Push)
 # ===============================
 try:
-    try:
     from push_routes import push_bp, notify_all
-except Exception as e:
-    print("⚠️ push_routes import warning:", repr(e))
+except ImportError:
     from push_routes import push_bp
     notify_all = None
-except Exception as e:
-    print("⚠️ push_routes import warning:", repr(e))
-    from push_routes import push_bp
-    notify_all = Noneapp.register_blueprint(push_bp)
+app.register_blueprint(push_bp)
 
 
 # ===============================
@@ -239,33 +234,24 @@ def index():
 # ===============================
 # ✅ 메모 API
 # ===============================
-
 @app.route("/api/memos", methods=["GET"])
 def api_get_memos():
     ensure_db()
     after_id = request.args.get("after_id")
 
-    try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                if after_id and str(after_id).isdigit():
-                    cur.execute(
-                        "select id, content, created_at from memos where id > %s order by id asc",
-                        (int(after_id),),
-                    )
-                else:
-                    cur.execute("select id, content, created_at from memos order by id asc")
-                rows = cur.fetchall()
-    except Exception as e:
-        print("⚠️ memos error:", e)
-        return jsonify([])
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if after_id and str(after_id).isdigit():
+                cur.execute(
+                    "select id, content, created_at from memos where id > %s order by id asc",
+                    (int(after_id),),
+                )
+            else:
+                cur.execute("select id, content, created_at from memos order by id asc")
+            rows = cur.fetchall()
 
-    out = [
-        {"id": r[0], "content": r[1], "created_at": r[2].isoformat() if r[2] else None}
-        for r in rows
-    ]
+    out = [{"id": r[0], "content": r[1], "created_at": r[2].isoformat() if r[2] else None} for r in rows]
     return jsonify(out)
-
 
 @app.route("/api/memos", methods=["POST"])
 def api_create_memo():
