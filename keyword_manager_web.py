@@ -124,6 +124,16 @@ def ensure_db():
 
             conn.commit()
         _DB_READY = True
+def _ensure_calendar_events_columns(cur):
+    cur.execute("select column_name from information_schema.columns where table_schema='public' and table_name='calendar_events'")
+    cols = {r[0] for r in cur.fetchall()}
+    if "memo" not in cols:
+        cur.execute("alter table calendar_events add column memo text")
+    if "created_at" not in cols:
+        cur.execute("alter table calendar_events add column created_at timestamptz not null default now()")
+    if "all_day" not in cols:
+        cur.execute("alter table calendar_events add column all_day int4 not null default 0")
+
 def _parse_dt(s):
     if not s:
         return None
@@ -145,12 +155,12 @@ def _dt_to_fullcalendar(dt, is_all_day):
 # ===============================
 # ✅ 환율 (시티은행)
 # ===============================
-_cached_rate = {"value": None, "start_time": None}
+_cached_rate = {"value": None, "date": None}
 
 def get_adjusted_exchange_rate():
     today = datetime.now().strftime("%Y-%m-%d")
-    if _cached_rate["value"] is not None and _cached_rate["start_time"] == today:
-        return _cached_rate["value"] or "-"
+    if _cached_rate["value"] is not None and _cached_rate["date"] == today:
+        return _cached_rate["value"]
 
     try:
         url = "https://www.citibank.co.kr/FxdExrt0100.act"
@@ -165,12 +175,12 @@ def get_adjusted_exchange_rate():
                 base = float(value.get_text(strip=True).replace(",", ""))
                 adjusted = round((base + 2) * 1.1, 2)
                 _cached_rate["value"] = adjusted
-                _cached_rate["start_time"] = today
+                _cached_rate["date"] = today
                 return adjusted
     except Exception as e:
         print("환율 오류:", e)
 
-    return _cached_rate["value"] or "-"
+    return _cached_rate["value"]
 
 # ===============================
 # ✅ Health (UptimeRobot)
@@ -214,35 +224,39 @@ def index():
     return render_template(
         "index.html",
         memo_list=memo_list,
-        exchange_rate=get_adjusted_exchange_rate() or "-",
+        exchange_rate=get_adjusted_exchange_rate(),
     )
 
 # ===============================
 # ✅ 메모 API
 # ===============================
+
 @app.route("/api/memos", methods=["GET"])
-def api_get_memos():
-    try:
 def api_get_memos():
     ensure_db()
     after_id = request.args.get("after_id")
 
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            if after_id and str(after_id).isdigit():
-                cur.execute(
-                    "select id, content, created_at from memos where id > %s order by id asc",
-                    (int(after_id),),
-                )
-            else:
-                cur.execute("select id, content, created_at from memos order by id asc")
-            rows = cur.fetchall()
-
-    out = [{"id": r[0], "content": r[1], "created_at": r[2].isoformat() if r[2] else None} for r in rows]
-            return jsonify(out)
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                if after_id and str(after_id).isdigit():
+                    cur.execute(
+                        "select id, content, created_at from memos where id > %s order by id asc",
+                        (int(after_id),),
+                    )
+                else:
+                    cur.execute("select id, content, created_at from memos order by id asc")
+                rows = cur.fetchall()
     except Exception as e:
         print("⚠️ memos error:", e)
         return jsonify([])
+
+    out = [
+        {"id": r[0], "content": r[1], "created_at": r[2].isoformat() if r[2] else None}
+        for r in rows
+    ]
+    return jsonify(out)
+
 
 @app.route("/api/memos", methods=["POST"])
 def api_create_memo():
@@ -303,10 +317,7 @@ def get_events():
                 "memo": memo or "",
             }
         )
-            return jsonify(out)
-    except Exception as e:
-        print("⚠️ memos error:", e)
-        return jsonify([])
+    return jsonify(out)
 
 @app.route("/api/events", methods=["POST"])
 def create_event():
