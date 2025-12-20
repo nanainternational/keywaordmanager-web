@@ -15,9 +15,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 
   <title>Keyword Manager Web</title>
-  <!-- PWA -->
   <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#111827">
 
 
   <!-- FullCalendar -->
@@ -438,10 +436,28 @@
     <div class="section">
       <div class="section-title">
         <h3>채팅</h3>
+        
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="mini" type="button" onclick="pwaEnableNotifications((document.getElementById('chatSender')?.value||'익명').trim()||'익명')">알림 켜기</button>
-          <button class="mini" type="button" onclick="pwaTestPush((document.getElementById('chatSender')?.value||'익명').trim()||'익명')">푸시 테스트</button>
+          <button class="mini icon-btn" id="noticeSettingsBtn" type="button" onclick="openNoticeSettingsModal(event)" aria-label="공지설정" style="width:44px;">
+            <span aria-hidden="true" style="font-size:18px; line-height:1;">🔔</span>
+            <div style="font-size:10px; margin-top:2px; color:rgba(255,255,255,.75); font-weight:600;">공지설정</div>
+          </button>
+
+          <button class="mini icon-btn" id="androidInstallBtn" type="button" onclick="triggerAndroidInstall(event)" aria-label="Android 설치" style="width:44px; display:none;">
+            <span aria-hidden="true" style="font-size:18px; line-height:1;">⬇️</span>
+            <div style="font-size:10px; margin-top:2px; color:rgba(255,255,255,.75); font-weight:600;">Android설치</div>
+          </button>
+
+          <button class="mini icon-btn" id="iosHowtoBtn" type="button" onclick="openIosInstallModal(event)" aria-label="iOS 설치방법" style="width:44px; display:none;">
+            <span aria-hidden="true" style="font-size:18px; line-height:1;">📱</span>
+            <div style="font-size:10px; margin-top:2px; color:rgba(255,255,255,.75); font-weight:600;">iOS설치</div>
+          </button>
+
+
+
+          <!-- (기존 테스트/알림 버튼은 설정 모달로 이동) -->
         </div>
+
       </div>
 
       <div class="presence-bar">
@@ -1019,7 +1035,85 @@
     }
   
     // =========================
-    // ✅ PWA 설치(안드로이드/아이폰)
+    // ✅ 공지설정(🔔) - 알림 권한/테스트
+    // =========================
+    const noticeSettingsBtn = document.getElementById("noticeSettingsBtn");
+    const noticeSettingsModal = document.getElementById("noticeSettingsModal");
+    const noticeSettingsCloseBtn = document.getElementById("noticeSettingsCloseBtn");
+    const noticeEnableBtn = document.getElementById("noticeEnableBtn");
+    const noticeTestBtn = document.getElementById("noticeTestBtn");
+    const noticePermissionState = document.getElementById("noticePermissionState");
+
+    function _updateNoticePermissionText(){
+      try{
+        const p = (window.Notification && Notification.permission) ? Notification.permission : "unsupported";
+        const map = { "granted":"허용됨", "denied":"차단됨", "default":"미설정", "unsupported":"미지원" };
+        if (noticePermissionState) noticePermissionState.textContent = "권한 상태: " + (map[p] || p);
+        if (noticeEnableBtn) {
+          noticeEnableBtn.disabled = (p === "granted" || p === "unsupported");
+          noticeEnableBtn.textContent = (p === "granted") ? "알림 켜짐" : "알림 켜기";
+        }
+      }catch(e){}
+    }
+
+    if (noticeSettingsBtn) {
+      noticeSettingsBtn.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (noticeSettingsModal) noticeSettingsModal.style.display = "flex";
+        _updateNoticePermissionText();
+      });
+    }
+    if (noticeSettingsCloseBtn) {
+      noticeSettingsCloseBtn.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (noticeSettingsModal) noticeSettingsModal.style.display = "none";
+      });
+    }
+    if (noticeSettingsModal) {
+      noticeSettingsModal.addEventListener("click", (e) => {
+        if (e.target === noticeSettingsModal) noticeSettingsModal.style.display = "none";
+      });
+    }
+
+    // ✅ 알림 켜기: 기존 pwa-push.js 함수 재사용
+    if (noticeEnableBtn) {
+      noticeEnableBtn.addEventListener("click", async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        try {
+          const name = ((document.getElementById("chatSender")?.value || "익명").trim()) || "익명";
+          if (typeof pwaEnableNotifications === "function") {
+            await pwaEnableNotifications(name);
+          } else {
+            alert("pwaEnableNotifications 함수가 없습니다. /static/pwa-push.js 확인 필요");
+          }
+        } catch (e2) {
+        } finally {
+          _updateNoticePermissionText();
+        }
+      });
+    }
+
+    // ✅ 테스트 알림: 서비스용에서는 숨기고 싶으면 여기만 막으면 됨
+    if (noticeTestBtn) {
+      noticeTestBtn.addEventListener("click", async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        try {
+          const name = ((document.getElementById("chatSender")?.value || "익명").trim()) || "익명";
+          if (typeof pwaTestPush === "function") {
+            await pwaTestPush(name);
+          } else {
+            alert("pwaTestPush 함수가 없습니다. /static/pwa-push.js 확인 필요");
+          }
+        } catch (e2) {}
+      });
+    }
+
+    // 초기 반영
+    _updateNoticePermissionText();
+
+  
+    // =========================
+    // ✅ PWA 설치(Android / iOS)
     // =========================
     const _ua = navigator.userAgent || "";
     const _isAndroid = /Android/i.test(_ua);
@@ -1029,19 +1123,25 @@
       (window.navigator.standalone === true);
 
     const androidInstallBtn = document.getElementById("androidInstallBtn");
-    const iosHowtoBtn = document.getElementById("iosHowtoBtn");
+    
+    // SHOW_ANDROID_INSTALL_ON_LOAD
+    try{
+      if (_isAndroid && !_isStandalone && androidInstallBtn) {
+        androidInstallBtn.style.display = "inline-flex";
+      }
+    }catch(_){}
+const iosHowtoBtn = document.getElementById("iosHowtoBtn");
     const iosInstallModal = document.getElementById("iosInstallModal");
     const iosInstallCloseBtn = document.getElementById("iosInstallCloseBtn");
 
-    // iOS: 설치방법 버튼만 노출(설치된 상태면 숨김)
+    // iOS: 설치 안내
     if (_isIOS && !_isStandalone && iosHowtoBtn) {
-      iosHowtoBtn.style.display = "inline-block";
+      iosHowtoBtn.style.display = "inline-flex";
       iosHowtoBtn.addEventListener("click", (e) => {
         e.preventDefault(); e.stopPropagation();
         if (iosInstallModal) iosInstallModal.style.display = "flex";
       });
     }
-
     if (iosInstallCloseBtn) {
       iosInstallCloseBtn.addEventListener("click", (e) => {
         e.preventDefault(); e.stopPropagation();
@@ -1054,28 +1154,26 @@
       });
     }
 
-    // Android: beforeinstallprompt로 설치 팝업 직접 호출
-    let deferredPrompt = null;
-
+    // Android: beforeinstallprompt로 설치 팝업 제어
+    window.__window.__deferredPrompt = null;
     window.addEventListener("beforeinstallprompt", (e) => {
       e.preventDefault();
-      deferredPrompt = e;
-
+      window.__deferredPrompt = e;
       if (_isAndroid && !_isStandalone && androidInstallBtn) {
-        androidInstallBtn.style.display = "inline-block";
+        androidInstallBtn.style.display = "inline-flex";
       }
     });
 
     if (androidInstallBtn) {
       androidInstallBtn.addEventListener("click", async (e) => {
         e.preventDefault(); e.stopPropagation();
-        if (!deferredPrompt) {
+        if (!window.__deferredPrompt) {
           alert("아직 설치 조건이 충족되지 않았습니다. (manifest/service-worker 조건 확인 필요)");
           return;
         }
-        deferredPrompt.prompt();
-        try { await deferredPrompt.userChoice; } catch (_) {}
-        deferredPrompt = null;
+        window.__deferredPrompt.prompt();
+        try { await window.__deferredPrompt.userChoice; } catch (_) {}
+        window.__deferredPrompt = null;
         androidInstallBtn.style.display = "none";
       });
     }
@@ -1085,21 +1183,71 @@
     });
 
   
-    // ✅ Service Worker 등록(루트)
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", async () => {
-        try {
-          await navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
-        } catch (e) {}
-      });
+    // =========================
+    // ✅ 설치/설정 버튼(인라인 onclick용)
+    // =========================
+    function openNoticeSettingsModal(e){
+      try{ if(e){ e.preventDefault(); e.stopPropagation(); } }catch(_){}
+      const modal = document.getElementById("noticeSettingsModal");
+      if (modal) modal.style.display = "flex";
+      try{ if (typeof _updateNoticePermissionText === "function") _updateNoticePermissionText(); }catch(_){}
+    }
+    function openIosInstallModal(e){
+      try{ if(e){ e.preventDefault(); e.stopPropagation(); } }catch(_){}
+      const modal = document.getElementById("iosInstallModal");
+      if (modal) modal.style.display = "flex";
+    }
+    async function triggerAndroidInstall(e){
+      try{ if(e){ e.preventDefault(); e.stopPropagation(); } }catch(_){}
+      // deferredPrompt는 beforeinstallprompt에서 잡힘
+      if (!window.__deferredPrompt) {
+        alert("아직 설치 조건이 잡히지 않았습니다.\n\n1) 크롬 메뉴(⋮)에 '앱 설치'가 있는지 확인\n2) 없다면 사이트 데이터를 삭제 후 다시 접속\n3) 잠시 사용 후 다시 시도");
+        return;
+      }
+      window.__window.__deferredPrompt.prompt();
+      try { await window.__deferredPrompt.userChoice; } catch(_) {}
+      window.__window.__deferredPrompt = null;
+      const btn = document.getElementById("androidInstallBtn");
+      if (btn) btn.style.display = "none";
     }
 
   </script>
 
+  <!-- ✅ 공지 설정 모달(알림 권한/구독) -->
+  <div id="noticeSettingsModal" class="modal-backdrop" style="display:none;">
+    <div class="modal" style="max-width:520px;">
+      <h4 style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <span>공지 설정</span>
+        <button id="noticeSettingsCloseBtn" type="button" class="mini" style="width:auto; padding:8px 10px;">닫기</button>
+      </h4>
+
+      <div class="hint" style="margin:0 2px 10px;">
+        공지/알림을 받으려면 브라우저 알림 권한이 필요합니다.
+      </div>
+
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.04); margin-bottom:10px;">
+        <div>
+          <div style="font-weight:600;">푸시 알림 받기</div>
+          <div class="hint" id="noticePermissionState">권한 상태: -</div>
+        </div>
+        <button id="noticeEnableBtn" type="button" class="primary mini" style="width:auto; padding:10px 12px;">알림 켜기</button>
+      </div>
+
+      <div class="hint" style="margin:0 2px 6px;">(선택) 알림이 잘 오는지 확인</div>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button id="noticeTestBtn" type="button" class="mini" style="width:auto; padding:10px 12px;">테스트 알림</button>
+      </div>
+    </div>
+  </div>
+
+
   <!-- ✅ iOS 설치 안내 모달 -->
   <div id="iosInstallModal" class="modal-backdrop" style="display:none;">
     <div class="modal" style="max-width:520px;">
-      <h4 style="margin:4px 2px 10px; font-size:14px; font-weight:600;">iOS 설치 방법</h4>
+      <h4 style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <span>iOS 설치 방법</span>
+        <button id="iosInstallCloseBtn" type="button" class="mini" style="width:auto; padding:8px 10px;">닫기</button>
+      </h4>
       <div class="hint" style="margin:0 2px 10px;">
         iOS(Safari)는 설치 팝업이 뜨지 않습니다. 아래 순서로 “홈 화면에 추가”를 해주세요.
       </div>
@@ -1108,9 +1256,6 @@
         2) 하단(또는 상단) <b>공유</b> 버튼 누르기<br>
         3) <b>홈 화면에 추가</b> 선택<br>
         4) 추가된 아이콘으로 실행
-      </div>
-      <div class="actions" style="justify-content:flex-end;">
-        <button id="iosInstallCloseBtn" type="button" class="primary" style="width:auto; padding:10px 14px;">확인</button>
       </div>
     </div>
   </div>
