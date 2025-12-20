@@ -126,18 +126,18 @@ def ensure_db():
                 cur.execute("alter table presence add column if not exists last_seen timestamptz not null default now()")
                 cur.execute("alter table presence add column if not exists user_agent text")
 
-# ✅ push_subscriptions (PWA 푸시 구독 저장)
-cur.execute(
-    """
-    create table if not exists push_subscriptions(
-        id bigserial primary key,
-        client_id text,
-        platform text,
-        endpoint text unique,
-        subscription jsonb not null,
-        created_at timestamptz not null default now(),
-        updated_at timestamptz not null default now()
-    )
+                # ✅ push_subscriptions (PWA 푸시 구독 저장)
+                cur.execute(
+                """
+                create table if not exists push_subscriptions(
+                id bigserial primary key,
+                client_id text,
+                platform text,
+                endpoint text unique,
+                subscription jsonb not null,
+                created_at timestamptz not null default now(),
+                updated_at timestamptz not null default now()
+                )
     """
 )
 
