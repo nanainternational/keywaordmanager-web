@@ -15,8 +15,17 @@ app = Flask(__name__)
 # ===============================
 # ✅ PWA Push (Web Push)
 # ===============================
-from push_routes import push_bp, notify_all
-app.register_blueprint(push_bp)
+try:
+    try:
+    from push_routes import push_bp, notify_all
+except Exception as e:
+    print("⚠️ push_routes import warning:", repr(e))
+    from push_routes import push_bp
+    notify_all = None
+except Exception as e:
+    print("⚠️ push_routes import warning:", repr(e))
+    from push_routes import push_bp
+    notify_all = Noneapp.register_blueprint(push_bp)
 
 
 # ===============================
