@@ -1,42 +1,26 @@
 import os
 import re
 import threading
-from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, render_template, send_from_directory
+from datetime import datetime
 
-# ===============================
-# ✅ Flask
-# ===============================
+import requests
+from bs4 import BeautifulSoup
+from flask import Flask, request, jsonify, render_template
+
+# ✅ psycopg (v3) 사용: Python 3.13에서 psycopg2 바이너리 호환 이슈 회피
+import psycopg
+
 app = Flask(__name__)
 
-# ===== Flask-Cors safe guard (server must not crash if missing) =====
-try:
-    import importlib
-    CORS = importlib.import_module("flask_cors").CORS
-    CORS(app)
-except Exception as e:
-    CORS = None
-    print("⚠️ Flask-Cors not available:", repr(e))
-# ====================================================================
-
-@app.route("/health", methods=["GET", "HEAD"])
-def health_check():
-    return "ok", 200
-
-@app.route("/favicon.ico", methods=["GET", "HEAD"])
-def favicon():
-    return "", 204
-
 # ===============================
-# ✅ Push (Blueprint)
+# ✅ PWA Push (Web Push)
 # ===============================
 try:
-    from push_routes import push_bp, send_push  # noqa: F401
-    app.register_blueprint(push_bp)
-except Exception as _e:
-    # push_routes.py가 없거나(또는 의존성 미설치)일 때도 기존 앱은 동작하게 둠
-    push_bp = None
-    send_push = None
+    from push_routes import push_bp, notify_all
+except ImportError:
+    from push_routes import push_bp
+    notify_all = None
+app.register_blueprint(push_bp)
 
 
 # ===============================
@@ -51,371 +35,759 @@ except Exception:
 # ===============================
 # ✅ DB
 # ===============================
-_DB_URL = (os.environ.get("DATABASE_URL") or "").strip()
+_DB_READY = False
+_DB_LOCK = threading.Lock()
 
 def _now():
     if TZ:
         return datetime.now(TZ)
     return datetime.now()
 
-# ===============================
-# ✅ psycopg (optional)
-# ===============================
-try:
-    import psycopg
-except Exception:
-    psycopg = None
-
-
-def _get_conn():
-    if not _DB_URL:
+def get_conn():
+    db_url = (os.environ.get("DATABASE_URL") or "").strip()
+    if not db_url:
         raise RuntimeError("DATABASE_URL not set")
-    if psycopg is None:
-        raise RuntimeError("psycopg not installed")
-    return psycopg.connect(_DB_URL, connect_timeout=10)
+    # psycopg v3
+    return psycopg.connect(db_url, connect_timeout=10)
 
-
-def _init_db():
-    if not _DB_URL or psycopg is None:
+def ensure_db():
+    global _DB_READY
+    if _DB_READY:
         return
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-            create table if not exists chat_messages (
-                id bigserial primary key,
-                room text not null,
-                sender text not null,
-                message text not null,
-                created_at timestamptz not null default now()
-            )
-            """)
-            cur.execute("""
-            create table if not exists memos (
-                id bigserial primary key,
-                text text not null,
-                created_at timestamptz not null default now()
-            )
-            """)
-            cur.execute("""
-            create table if not exists calendar_events (
-                id bigserial primary key,
-                title text not null,
-                date text not null,
-                start_time text,
-                end_time text,
-                created_at timestamptz not null default now()
-            )
-            """)
-            cur.execute("""
-            create table if not exists presence (
-                id bigserial primary key,
-                client_id text unique not null,
-                sender text,
-                animal text,
-                last_seen timestamptz not null default now()
-            )
-            """)
-            # ensure add column if not exists last_seen timestamptz not null default now()
-        conn.commit()
+    with _DB_LOCK:
+        if _DB_READY:
+            return
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                # memos
+                cur.execute(
+                    """
+                    create table if not exists memos(
+                        id bigserial primary key,
+                        content text unique,
+                        created_at timestamptz not null default now()
+                    )
+                    """
+                )
 
+                # chat_messages
+                cur.execute(
+                    """
+                    create table if not exists chat_messages(
+                        id bigserial primary key,
+                        room text not null default 'main',
+                        sender text,
+                        message text,
+                        created_at timestamptz not null default now()
+                    )
+                    """
+                )
+                # ✅ client_id 컬럼이 없으면 추가 (내/남 구분)
+                cur.execute(
+                    """
+                    select 1
+                    from information_schema.columns
+                    where table_schema='public' and table_name='chat_messages' and column_name='client_id'
+                    """
+                )
+                if cur.fetchone() is None:
+                    cur.execute("alter table chat_messages add column client_id text")
 
-_init_db()
+                # calendar_events
+                cur.execute(
+                    """
+                    create table if not exists calendar_events(
+                        id bigserial primary key,
+                        title text,
+                        start_time timestamptz,
+                        end_time timestamptz,
+                        all_day int4 not null default 0,
+                        memo text,
+                        created_at timestamptz not null default now()
+                    )
+                    """
+                )
 
+                # ✅ presence (최근 접속자)
+                cur.execute(
+                    """
+                    create table if not exists presence(
+                        client_id text primary key,
+                        sender text,
+                        animal text,
+                        last_seen timestamptz not null default now(),
+                        user_agent text
+                    )
+                    """
+                )
+                # 기존 테이블 호환: 컬럼 누락 시 추가
+                cur.execute("alter table presence add column if not exists sender text")
+                cur.execute("alter table presence add column if not exists animal text")
+                cur.execute("alter table presence add column if not exists last_seen timestamptz not null default now()")
+                cur.execute("alter table presence add column if not exists user_agent text")
 
-# ===============================
-# ✅ Static / Templates
-# ===============================
-@app.route("/", methods=["GET", "POST", "OPTIONS", "HEAD"])
-def index():
-    # Some browsers/extensions (or stray forms) may POST to "/".
-    # We keep the page GET-able, and make POST a no-op so it never 405s.
-    if request.method in ("POST", "OPTIONS"):
-        return "", 204
-    return render_template("index.html")@app.route("/rate")
-def rate_page():
-    return render_template("rate.html")
-
-
-# ===============================
-# ✅ PWA (manifest / service worker)
-# ===============================
-@app.route("/service-worker.js")
-def service_worker():
-    return send_from_directory(
-        ".",
-        "service-worker.js",
-        mimetype="application/javascript",
-        max_age=0
+# ✅ push_subscriptions (PWA 푸시 구독 저장)
+cur.execute(
+    """
+    create table if not exists push_subscriptions(
+        id bigserial primary key,
+        client_id text,
+        platform text,
+        endpoint text unique,
+        subscription jsonb not null,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
     )
+    """
+)
 
+            conn.commit()
+        _DB_READY = True
+def _ensure_calendar_events_columns(cur):
+    cur.execute("select column_name from information_schema.columns where table_schema='public' and table_name='calendar_events'")
+    cols = {r[0] for r in cur.fetchall()}
+    if "memo" not in cols:
+        cur.execute("alter table calendar_events add column memo text")
+    if "created_at" not in cols:
+        cur.execute("alter table calendar_events add column created_at timestamptz not null default now()")
+    if "all_day" not in cols:
+        cur.execute("alter table calendar_events add column all_day int4 not null default 0")
 
-@app.route("/manifest.webmanifest")
-def webmanifest():
-    return send_from_directory(
-        ".",
-        "manifest.webmanifest",
-        mimetype="application/manifest+json",
-        max_age=0
-    )
-
-
-# ===============================
-# ✅ Chat API
-# ===============================
-@app.route("/api/chat/messages", methods=["GET"])
-def api_chat_messages():
-    room = request.args.get("room", "main")
-    after_id = request.args.get("after_id", "0")
+def _parse_dt(s):
+    if not s:
+        return None
     try:
-        after_id = int(after_id)
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
     except Exception:
-        after_id = 0
+        return None
 
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True, "messages": []})
+def _dt_to_fullcalendar(dt, is_all_day):
+    if not dt:
+        return None
+    try:
+        if is_all_day:
+            return dt.strftime("%Y-%m-%d")
+        return dt.strftime("%Y-%m-%dT%H:%M")
+    except Exception:
+        return None
 
-    with _get_conn() as conn:
+# ===============================
+# ✅ 환율 (시티은행)
+# ===============================
+_cached_rate = {"value": None, "date": None}
+
+def get_adjusted_exchange_rate():
+    today = datetime.now().strftime("%Y-%m-%d")
+    if _cached_rate["value"] is not None and _cached_rate["date"] == today:
+        return _cached_rate["value"]
+
+    try:
+        url = "https://www.citibank.co.kr/FxdExrt0100.act"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=6)
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        for li in soup.select("ul.exchangeList > li"):
+            label = li.select_one("span.flagCn")
+            value = li.select_one("span.green")
+            if label and value and "중국" in label.get_text(strip=True):
+                base = float(value.get_text(strip=True).replace(",", ""))
+                adjusted = round((base + 2) * 1.1, 2)
+                _cached_rate["value"] = adjusted
+                _cached_rate["date"] = today
+                return adjusted
+    except Exception as e:
+        print("환율 오류:", e)
+
+    return _cached_rate["value"]
+
+# ===============================
+# ✅ Health (UptimeRobot)
+# ===============================
+@app.route("/health", methods=["GET", "HEAD"])
+def health():
+    return ("", 200)
+
+# ===============================
+# ✅ 메인 페이지
+# ===============================
+@app.route("/", methods=["GET", "POST", "HEAD"])
+def index():
+    if request.method == "HEAD":
+        return ("", 200)
+
+    ensure_db()
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        memo_keyword = (request.form.get("memo_keyword") or "").strip()
+
+        if action == "add_memo" and memo_keyword:
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("insert into memos (content) values (%s) on conflict do nothing", (memo_keyword,))
+                conn.commit()
+
+        if action == "delete_memo" and memo_keyword:
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("delete from memos where content=%s", (memo_keyword,))
+                conn.commit()
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # ✅ 최신 메모가 위로
+            cur.execute("select content from memos order by id desc")
+            memo_list = [r[0] for r in cur.fetchall()]
+
+    return render_template(
+        "index.html",
+        memo_list=memo_list,
+        exchange_rate=get_adjusted_exchange_rate(),
+    )
+
+# ===============================
+# ✅ 메모 API
+# ===============================
+@app.route("/api/memos", methods=["GET"])
+def api_get_memos():
+    ensure_db()
+    after_id = request.args.get("after_id")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if after_id and str(after_id).isdigit():
+                cur.execute(
+                    "select id, content, created_at from memos where id > %s order by id asc",
+                    (int(after_id),),
+                )
+            else:
+                cur.execute("select id, content, created_at from memos order by id asc")
+            rows = cur.fetchall()
+
+    out = [{"id": r[0], "content": r[1], "created_at": r[2].isoformat() if r[2] else None} for r in rows]
+    return jsonify(out)
+
+@app.route("/api/memos", methods=["POST"])
+def api_create_memo():
+    ensure_db()
+    data = request.get_json(silent=True) or {}
+    content = (data.get("content") or "").strip()
+    if not content:
+        return jsonify({"ok": False, "error": "empty"}), 400
+
+    now = _now()
+    with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "select id, room, sender, message, created_at from chat_messages where room=%s and id>%s order by id asc limit 200",
+                "insert into memos (content, created_at) values (%s, %s) on conflict do nothing returning id",
+                (content, now),
+            )
+            row = cur.fetchone()
+        conn.commit()
+
+    return jsonify({"ok": True, "id": row[0] if row else None})
+
+@app.route("/api/memos/<int:memo_id>", methods=["DELETE"])
+def api_delete_memo(memo_id):
+    ensure_db()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("delete from memos where id=%s", (memo_id,))
+        conn.commit()
+    return jsonify({"ok": True})
+
+# ===============================
+# ✅ 캘린더 API
+# ===============================
+@app.route("/api/events", methods=["GET"])
+def get_events():
+    ensure_db()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _ensure_calendar_events_columns(cur)
+            cur.execute(
+                """
+                select id, title, start_time, end_time, all_day, memo
+                from calendar_events
+                order by id asc
+                """
+            )
+            rows = cur.fetchall()
+
+    out = []
+    for (eid, title, st, et, all_day, memo) in rows:
+        out.append(
+            {
+                "id": eid,
+                "title": title or "",
+                "start": _dt_to_fullcalendar(st, bool(all_day)),
+                "end": _dt_to_fullcalendar(et, bool(all_day)) if et else None,
+                "allDay": bool(all_day),
+                "memo": memo or "",
+            }
+        )
+    return jsonify(out)
+
+@app.route("/api/events", methods=["POST"])
+def create_event():
+    ensure_db()
+    data = request.get_json(silent=True) or {}
+
+    title = (data.get("title") or "").strip()
+    st = _parse_dt(data.get("start"))
+    et = _parse_dt(data.get("end")) if data.get("end") else None
+    all_day = 1 if data.get("allDay") else 0
+    memo = data.get("memo") or ""
+
+    if not title or not st:
+        return jsonify({"ok": False, "error": "title/start required"}), 400
+
+    now = _now()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _ensure_calendar_events_columns(cur)
+            cur.execute(
+                """
+                insert into calendar_events (title, start_time, end_time, all_day, memo, created_at)
+                values (%s, %s, %s, %s, %s, %s)
+                returning id
+                """,
+                (title, st, et, all_day, memo, now),
+            )
+            event_id = cur.fetchone()[0]
+        conn.commit()
+
+    return jsonify({"ok": True, "id": event_id})
+
+@app.route("/api/events/<int:event_id>", methods=["PUT"])
+def update_event(event_id):
+    ensure_db()
+    data = request.get_json(silent=True) or {}
+
+    fields = []
+    values = []
+
+    if "title" in data:
+        fields.append("title=%s")
+        values.append((data.get("title") or "").strip())
+
+    if "start" in data:
+        fields.append("start_time=%s")
+        values.append(_parse_dt(data.get("start")))
+
+    if "end" in data:
+        fields.append("end_time=%s")
+        values.append(_parse_dt(data.get("end")) if data.get("end") else None)
+
+    if "allDay" in data:
+        fields.append("all_day=%s")
+        values.append(1 if data.get("allDay") else 0)
+
+    if "memo" in data:
+        fields.append("memo=%s")
+        values.append(data.get("memo") or "")
+
+    if not fields:
+        return jsonify({"ok": True})
+
+    values.append(event_id)
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _ensure_calendar_events_columns(cur)
+            cur.execute(f"update calendar_events set {', '.join(fields)} where id=%s", values)
+        conn.commit()
+
+    return jsonify({"ok": True})
+
+@app.route("/api/events/<int:event_id>", methods=["DELETE"])
+def delete_event(event_id):
+    ensure_db()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("delete from calendar_events where id=%s", (event_id,))
+        conn.commit()
+    return jsonify({"ok": True})
+
+# ===============================
+# ✅ 채팅 API
+# ===============================
+@app.route("/api/chat/messages", methods=["GET"])
+def chat_messages():
+    ensure_db()
+    try:
+        after_id = int(request.args.get("after_id", 0))
+    except Exception:
+        after_id = 0
+    room = (request.args.get("room") or "main").strip() or "main"
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select id, sender, message, created_at, client_id
+                from chat_messages
+                where room = %s and id > %s
+                order by id asc
+                """,
                 (room, after_id),
             )
             rows = cur.fetchall()
 
-    msgs = []
-    for r in rows:
-        msgs.append({
-            "id": r[0],
-            "room": r[1],
-            "sender": r[2],
-            "message": r[3],
-            "created_at": r[4].isoformat() if r[4] else None,
-        })
-    return jsonify({"ok": True, "messages": msgs})
-
+    return jsonify(
+        {
+            "ok": True,
+            "messages": [
+                {"id": r[0], "sender": r[1], "message": r[2], "created_at": r[3].isoformat() if r[3] else None, "client_id": r[4]}
+                for r in rows
+            ],
+        }
+    )
 
 @app.route("/api/chat/send", methods=["POST"])
-def api_chat_send():
+def send_chat():
+    ensure_db()
     data = request.get_json(silent=True) or {}
-    room = (data.get("room") or "main").strip()
+
+    room = (data.get("room") or "main").strip() or "main"
     sender = (data.get("sender") or "익명").strip()
+    client_id = (data.get("client_id") or "").strip() or None
     message = (data.get("message") or "").strip()
+    client_id = (data.get("client_id") or "").strip() or None
     if not message:
-        return jsonify({"ok": False, "error": "empty message"}), 400
+        return jsonify({"ok": False, "error": "empty_message"}), 400
 
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True})
+    now = _now()
 
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "insert into chat_messages (room, sender, message) values (%s, %s, %s) returning id",
-                (room, sender, message),
-            )
-            new_id = cur.fetchone()[0]
-        conn.commit()
-
-    # (옵션) 새 메시지 발생 시 푸시 보내고 싶으면 여기서 send_push 호출 가능
-    # if send_push:
-    #     send_push({"title": "새 메시지", "body": f"{sender}: {message}", "url": "/"})
-
-    return jsonify({"ok": True, "id": new_id})
-
-
-# ===============================
-# ✅ Memos API
-# ===============================
-@app.route("/api/memos", methods=["GET"])
-def api_memos():
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True, "memos": []})
-
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("select id, text, created_at from memos order by id desc limit 500")
-            rows = cur.fetchall()
-
-    memos = []
-    for r in rows:
-        memos.append({
-            "id": r[0],
-            "text": r[1],
-            "created_at": r[2].isoformat() if r[2] else None,
-        })
-    return jsonify({"ok": True, "memos": memos})
-
-
-@app.route("/api/memos/add", methods=["POST"])
-def api_memos_add():
-    data = request.get_json(silent=True) or {}
-    text = (data.get("text") or "").strip()
-    if not text:
-        return jsonify({"ok": False, "error": "empty"}), 400
-
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True})
-
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("insert into memos (text) values (%s)", (text,))
-        conn.commit()
-
-    return jsonify({"ok": True})
-
-
-@app.route("/api/memos/delete", methods=["POST"])
-def api_memos_delete():
-    data = request.get_json(silent=True) or {}
-    memo_id = data.get("id")
-    try:
-        memo_id = int(memo_id)
-    except Exception:
-        return jsonify({"ok": False, "error": "invalid id"}), 400
-
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True})
-
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("delete from memos where id=%s", (memo_id,))
-        conn.commit()
-
-    return jsonify({"ok": True})
-
-
-# ===============================
-# ✅ Calendar API
-# ===============================
-@app.route("/api/events", methods=["GET"])
-def api_events():
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True, "events": []})
-
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("select id, title, date, start_time, end_time from calendar_events order by date asc, start_time asc limit 2000")
-            rows = cur.fetchall()
-
-    events = []
-    for r in rows:
-        events.append({
-            "id": r[0],
-            "title": r[1],
-            "date": r[2],
-            "start": r[3],
-            "end": r[4],
-        })
-    return jsonify({"ok": True, "events": events})
-
-
-@app.route("/api/events/add", methods=["POST"])
-def api_events_add():
-    data = request.get_json(silent=True) or {}
-    title = (data.get("title") or "").strip()
-    date = (data.get("date") or "").strip()
-    start_time = (data.get("start") or "").strip()
-    end_time = (data.get("end") or "").strip()
-
-    if not title or not date:
-        return jsonify({"ok": False, "error": "missing title/date"}), 400
-
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True})
-
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "insert into calendar_events (title, date, start_time, end_time) values (%s, %s, %s, %s)",
-                (title, date, start_time or None, end_time or None),
-            )
-        conn.commit()
-
-    return jsonify({"ok": True})
-
-
-@app.route("/api/events/delete", methods=["POST"])
-def api_events_delete():
-    data = request.get_json(silent=True) or {}
-    event_id = data.get("id")
-    try:
-        event_id = int(event_id)
-    except Exception:
-        return jsonify({"ok": False, "error": "invalid id"}), 400
-
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True})
-
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("delete from calendar_events where id=%s", (event_id,))
-        conn.commit()
-
-    return jsonify({"ok": True})
-
-
-# ===============================
-# ✅ Presence API
-# ===============================
-@app.route("/api/presence/ping", methods=["POST"])
-def api_presence_ping():
-    data = request.get_json(silent=True) or {}
-    client_id = (data.get("client_id") or "").strip()
-    sender = (data.get("sender") or "").strip()
-    animal = (data.get("animal") or "").strip()
-
-    if not client_id:
-        return jsonify({"ok": False, "error": "missing client_id"}), 400
-
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True})
-
-    with _get_conn() as conn:
+    with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                insert into presence (client_id, sender, animal, last_seen)
-                values (%s, %s, %s, now())
-                on conflict (client_id) do update
-                set sender=excluded.sender,
-                    animal=excluded.animal,
-                    last_seen=now()
+                insert into chat_messages (room, sender, message, created_at, client_id)
+                values (%s, %s, %s, %s, %s)
+                returning id
                 """,
-                (client_id, sender, animal),
+                (room, sender, message, now, client_id),
+            )
+            msg_id = cur.fetchone()[0]
+        conn.commit()
+
+    # ✅ Push 알림 (옵션): 새 메시지 도착 시 구독자에게 푸시 전송
+    # - 실패해도 채팅 저장/응답은 정상 처리되도록 try/except
+    try:
+        notify_all(
+            title=f"새 메시지: {sender}",
+            body=(message[:120] + ("…" if len(message) > 120 else "")),
+            url="/",
+        )
+    except Exception as _e:
+        print("[push] notify_all failed:", _e)
+
+    return jsonify({"ok": True, "id": msg_id, "created_at": now.isoformat(), "client_id": client_id})
+
+
+# ===============================
+# ✅ 최근 접속자(Presence) API
+# ===============================
+@app.route("/api/presence/ping", methods=["POST"])
+def presence_ping():
+    ensure_db()
+    data = request.get_json(silent=True) or {}
+    client_id = (data.get("client_id") or "").strip()
+    sender = (data.get("sender") or "").strip() or None
+    animal = (data.get("animal") or "").strip() or None
+    if not client_id:
+        return jsonify({"ok": False, "error": "no_client_id"}), 400
+
+    ua = request.headers.get("User-Agent", "")
+    now = _now()
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into presence (client_id, sender, animal, last_seen, user_agent)
+                values (%s, %s, %s, %s, %s)
+                on conflict (client_id) do update
+                set sender = coalesce(excluded.sender, presence.sender),
+                    animal = coalesce(excluded.animal, presence.animal),
+                    last_seen = excluded.last_seen,
+                    user_agent = excluded.user_agent
+                """,
+                (client_id, sender, animal, now, ua),
             )
         conn.commit()
 
-    return jsonify({"ok": True})
-
+    return jsonify({"ok": True, "last_seen": now.isoformat()})
 
 @app.route("/api/presence/list", methods=["GET"])
-def api_presence_list():
-    minutes = request.args.get("minutes", "3")
+def presence_list():
+    ensure_db()
     try:
-        minutes = int(minutes)
+        minutes = int(request.args.get("minutes", "5"))
     except Exception:
-        minutes = 3
+        minutes = 5
+    if minutes < 1:
+        minutes = 1
+    if minutes > 60:
+        minutes = 60
 
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True, "list": []})
-
-    with _get_conn() as conn:
+    with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "select client_id, sender, animal, last_seen from presence where last_seen > (now() - interval '%s minutes') order by last_seen desc limit 50",
+                """
+                select client_id, sender, animal, last_seen
+                from presence
+                where last_seen >= (now() - (%s || ' minutes')::interval)
+                order by last_seen desc
+                limit 30
+                """,
                 (minutes,),
             )
             rows = cur.fetchall()
 
-    items = [
-        {"client_id": r[0], "sender": (r[1] or ""), "animal": (r[2] or ""), "last_seen": r[3].isoformat() if r[3] else None}
-        for r in rows
-    ]
-    return jsonify({"ok": True, "list": items})
+    return jsonify({
+        "ok": True,
+        "minutes": minutes,
+        "users": [
+            {"client_id": r[0], "sender": (r[1] or ""), "animal": (r[2] or ""), "last_seen": r[3].isoformat() if r[3] else None}
+            for r in rows
+        ]
+    })
 
 
 # ===============================
-# ✅ Run
+# ✅ PWA (manifest / service worker)
+#    - iOS Web Push는 /service-worker.js 가 "루트"로 열려야 함
+#    - 파일을 static/에 두든, 루트에 두든 둘 다 대응(404 방지)
 # ===============================
+from flask import send_from_directory
+
+def _send_file_from_static_or_root(filename: str, mimetype: str):
+    # 1) static/ 우선
+    static_dir = app.static_folder  # 기본: <project>/static
+    if static_dir and os.path.exists(os.path.join(static_dir, filename)):
+        return send_from_directory(static_dir, filename, mimetype=mimetype, max_age=0)
+    # 2) 프로젝트 루트(app.root_path) 폴백
+    root_dir = app.root_path
+    return send_from_directory(root_dir, filename, mimetype=mimetype, max_age=0)
+
+@app.route("/service-worker.js")
+def service_worker():
+    return _send_file_from_static_or_root("service-worker.js", "application/javascript")
+
+@app.route("/manifest.webmanifest")
+def webmanifest():
+    return _send_file_from_static_or_root("manifest.webmanifest", "application/manifest+json")
+
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "5000"))
+    ensure_db()
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
+
+# ===============================
+# ✅ ADMIN PUSH API
+# ===============================
+# requirements: pywebpush==1.14.0
+# env:
+# - VAPID_PRIVATE_KEY (required)
+# - VAPID_SUBJECT (optional, default: mailto:secsiboy1@gmail.com)
+# - ADMIN_PUSH_KEY (optional but strongly recommended)
+
+import json as _json
+from pywebpush import webpush, WebPushException
+
+def _vapid_subject():
+    return (os.environ.get("VAPID_SUBJECT") or "mailto:secsiboy1@gmail.com").strip()
+
+def _admin_key_ok(req):
+    need = (os.environ.get("ADMIN_PUSH_KEY") or "").strip()
+    if not need:
+        # 운영에서는 반드시 ADMIN_PUSH_KEY를 설정하세요.
+        return True
+    got = (req.headers.get("X-ADMIN-KEY") or "").strip()
+    return got == need
+
+def _guess_platform(user_agent: str) -> str:
+    ua = (user_agent or "").lower()
+    if "android" in ua:
+        return "android"
+    if "iphone" in ua or "ipad" in ua or "ipod" in ua:
+        return "ios"
+    return "desktop"
+
+@app.route("/api/push/subscribe", methods=["POST"])
+def api_push_subscribe():
+    """
+    body:
+    {
+      "client_id": "허니걸",
+      "platform": "android|ios|desktop" (optional),
+      "subscription": { ...PushSubscription... }
+    }
+    """
+    ensure_db()
+    data = request.get_json(silent=True) or {}
+    client_id = (data.get("client_id") or "").strip()
+    platform = (data.get("platform") or "").strip().lower()
+    sub = data.get("subscription") or {}
+    endpoint = (sub.get("endpoint") or "").strip()
+
+    if not endpoint or not isinstance(sub, dict):
+        return jsonify({"ok": False, "error": "invalid_subscription"}), 400
+
+    if not platform:
+        platform = _guess_platform(request.headers.get("User-Agent") or "")
+
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    insert into push_subscriptions (client_id, platform, endpoint, subscription)
+                    values (%s, %s, %s, %s::jsonb)
+                    on conflict (endpoint) do update set
+                        client_id = excluded.client_id,
+                        platform = excluded.platform,
+                        subscription = excluded.subscription,
+                        updated_at = now()
+                    """,
+                    (client_id, platform, endpoint, _json.dumps(sub, ensure_ascii=False)),
+                )
+            conn.commit()
+    except Exception as e:
+        return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500
+
+    return jsonify({"ok": True, "platform": platform})
+
+@app.route("/api/push/unsubscribe", methods=["POST"])
+def api_push_unsubscribe():
+    """body: { "endpoint": "..." }"""
+    ensure_db()
+    data = request.get_json(silent=True) or {}
+    endpoint = (data.get("endpoint") or "").strip()
+    if not endpoint:
+        return jsonify({"ok": False, "error": "missing_endpoint"}), 400
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("delete from push_subscriptions where endpoint=%s", (endpoint,))
+            conn.commit()
+    except Exception as e:
+        return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500
+    return jsonify({"ok": True})
+
+def _load_subscriptions(target: str, client_id: str):
+    target = (target or "all").strip().lower()
+    client_id = (client_id or "").strip()
+
+    where = []
+    params = []
+
+    if target and target != "all":
+        where.append("platform=%s")
+        params.append(target)
+
+    if client_id:
+        where.append("client_id=%s")
+        params.append(client_id)
+
+    sql = "select endpoint, subscription from push_subscriptions"
+    if where:
+        sql += " where " + " and ".join(where)
+    sql += " order by id asc"
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, tuple(params))
+            rows = cur.fetchall()
+
+    subs = []
+    for endpoint, sub_json in rows:
+        if isinstance(sub_json, dict):
+            sub = sub_json
+        else:
+            try:
+                sub = _json.loads(sub_json)
+            except Exception:
+                sub = {"endpoint": endpoint}
+        subs.append(sub)
+    return subs
+
+def _send_webpush(subscription: dict, payload: dict):
+    vapid_private_key = (os.environ.get("VAPID_PRIVATE_KEY") or "").strip()
+    if not vapid_private_key:
+        raise RuntimeError("VAPID_PRIVATE_KEY not set")
+    webpush(
+        subscription_info=subscription,
+        data=_json.dumps(payload, ensure_ascii=False),
+        vapid_private_key=vapid_private_key,
+        vapid_claims={"sub": _vapid_subject()},
+    )
+
+@app.route("/api/admin/push/send", methods=["POST"])
+def api_admin_push_send():
+    """
+    headers:
+      X-ADMIN-KEY: <ADMIN_PUSH_KEY>
+
+    body:
+    {
+      "title": "공지",
+      "body": "내용",
+      "url": "/",
+      "target": "all|android|ios|desktop",
+      "client_id": ""   // 지정 시 특정 client_id만
+    }
+    """
+    if not _admin_key_ok(request):
+        return jsonify({"ok": False, "error": "unauthorized"}), 403
+
+    ensure_db()
+
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "공지").strip()
+    body = (data.get("body") or "").strip()
+    url = (data.get("url") or "/").strip()
+    target = (data.get("target") or "all").strip().lower()
+    client_id = (data.get("client_id") or "").strip()
+
+    payload = {"title": title, "body": body, "url": url}
+
+    sent = 0
+    failed = 0
+    removed = 0
+    errors = []
+
+    try:
+        subs = _load_subscriptions(target, client_id)
+    except Exception as e:
+        return jsonify({"ok": False, "error": "db_error", "detail": str(e)}), 500
+
+    for sub in subs:
+        try:
+            _send_webpush(sub, payload)
+            sent += 1
+        except WebPushException as e:
+            failed += 1
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            errors.append({"endpoint": sub.get("endpoint",""), "status": status, "error": str(e)})
+            if status in (404, 410):
+                try:
+                    ep = (sub.get("endpoint") or "").strip()
+                    if ep:
+                        with get_conn() as conn:
+                            with conn.cursor() as cur:
+                                cur.execute("delete from push_subscriptions where endpoint=%s", (ep,))
+                            conn.commit()
+                        removed += 1
+                except Exception:
+                    pass
+        except Exception as e:
+            failed += 1
+            errors.append({"endpoint": sub.get("endpoint",""), "error": str(e)})
+
+    return jsonify({"ok": True, "sent": sent, "failed": failed, "removed": removed, "count": len(subs), "errors": errors})
