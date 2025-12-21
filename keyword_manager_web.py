@@ -3,14 +3,44 @@ import re
 import threading
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template, send_from_directory
-from flask_cors import CORS
+
+def _safe_render(template_name: str, **context):
+    """Render template if available; otherwise return a minimal HTML.
+    Prevents 500 when templates are missing/mispackaged on Render."""
+    try:
+        return render_template(template_name, **context)
+    except Exception as e:
+        print("⚠️ Template render failed:", template_name, repr(e))
+        # Minimal fallback page
+        return (
+            "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'/>"
+            "<title>Keyword Manager</title></head><body>"
+            "<h3>Keyword Manager</h3>"
+            "<p>Template missing or failed to render: <b>%s</b></p>"
+            "</body></html>" % template_name,
+            200,
+            {"Content-Type": "text/html; charset=utf-8"},
+        )
 
 # ===============================
 # ✅ Flask
 # ===============================
 app = Flask(__name__)
-CORS(app)
 
+# ===== Startup diagnostics (Render) =====
+print('✅ App boot: keyword_manager_web loaded')
+print('✅ DATABASE_URL set:', bool(os.environ.get('DATABASE_URL')))
+# =======================================
+
+# ===== Flask-Cors safe guard (server must not crash if missing) =====
+try:
+    import importlib
+    CORS = importlib.import_module("flask_cors").CORS
+    CORS(app)
+except Exception as e:
+    CORS = None
+    print("⚠️ Flask-Cors not available:", repr(e))
+# ====================================================================
 # ===============================
 # ✅ Push (Blueprint)
 # ===============================
@@ -59,32 +89,6 @@ def _get_conn():
     return psycopg.connect(_DB_URL, connect_timeout=10)
 
 
-def _ensure_calendar_schema(cur):
-    """DB migration for old calendar_events schema.
-    Some deployments have calendar_events without 'date' column (e.g. 'event_date' or 'day').
-    We normalize it to 'date' so the API queries work.
-    """
-    try:
-        cur.execute("""
-            select column_name
-            from information_schema.columns
-            where table_schema = 'public' and table_name = 'calendar_events'
-        """)
-        cols = {r[0] for r in cur.fetchall()}
-        if "date" in cols:
-            return
-
-        # Rename common legacy columns to 'date'
-        for legacy in ("event_date", "day", "dt"):
-            if legacy in cols:
-                cur.execute(f'alter table calendar_events rename column "{legacy}" to "date"')
-                return
-
-        # If no usable legacy column, add 'date'
-        cur.execute('alter table calendar_events add column "date" date')
-    except Exception as e:
-        print("⚠️ calendar_events schema check failed:", repr(e))
-
 def _init_db():
     if not _DB_URL or psycopg is None:
         return
@@ -116,8 +120,6 @@ def _init_db():
                 created_at timestamptz not null default now()
             )
             """)
-            _ensure_calendar_schema(cur)
-            conn.commit()
             cur.execute("""
             create table if not exists presence (
                 id bigserial primary key,
@@ -137,14 +139,23 @@ _init_db()
 # ===============================
 # ✅ Static / Templates
 # ===============================
-@app.route("/")
+@app.route("/", methods=["GET","POST","OPTIONS","HEAD"])
 def index():
-    return render_template("index.html")
+    # Some browsers/extensions (or stray forms) may POST to "/".
+    if request.method in ("POST", "OPTIONS"):
+        return "", 204
+    return _safe_render("index.html")
 
+@app.route("/health", methods=["GET", "HEAD"]) 
+def health_check():
+    return "ok", 200
 
+@app.route("/favicon.ico", methods=["GET", "HEAD"]) 
+def favicon():
+    return "", 204
 @app.route("/rate")
 def rate_page():
-    return render_template("rate.html")
+    return _safe_render("rate.html")
 
 
 # ===============================
@@ -427,6 +438,24 @@ def api_presence_list():
 # ===============================
 # ✅ Run
 # ===============================
+
+
+@app.errorhandler(Exception)
+def _handle_unexpected_error(e):
+    # Log full error to Render logs
+    print('❌ Unhandled error:', repr(e))
+    # If API call, return JSON
+    try:
+        if request.path.startswith('/api/'):
+            return jsonify({'ok': False, 'error': str(e)}), 500
+    except Exception:
+        pass
+    # Otherwise show a minimal page
+    return (
+        '<h3>Internal Server Error</h3><pre>%s</pre>' % (str(e),),
+        500,
+        {'Content-Type': 'text/html; charset=utf-8'},
+    )
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="0.0.0.0", port=port)
