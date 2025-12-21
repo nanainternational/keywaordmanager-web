@@ -8,8 +8,7 @@ from flask_cors import CORS
 # ===============================
 # ✅ Flask
 # ===============================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-app = Flask(__name__, static_folder=os.path.join(BASE_DIR, "static"), template_folder=os.path.join(BASE_DIR, "templates"))
+app = Flask(__name__)
 CORS(app)
 
 # ===============================
@@ -211,7 +210,7 @@ def rate_page():
 @app.route("/service-worker.js")
 def service_worker():
     return send_from_directory(
-        BASE_DIR,
+        ".",
         "service-worker.js",
         mimetype="application/javascript",
         max_age=0
@@ -221,7 +220,7 @@ def service_worker():
 @app.route("/manifest.webmanifest")
 def webmanifest():
     return send_from_directory(
-        BASE_DIR,
+        ".",
         "manifest.webmanifest",
         mimetype="application/manifest+json",
         max_age=0
@@ -488,17 +487,3 @@ def api_presence_list():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="0.0.0.0", port=port)
-
-# ===============================
-# ✅ Rate API (frontend expects /api/rate)
-# ===============================
-@app.route("/api/rate")
-def api_rate():
-    # TODO: implement real CNY rate logic
-    return jsonify({"rate": None})
-
-
-# ✅ Frontend compatibility: POST /api/events -> existing add handler
-@app.route("/api/events", methods=["POST"])
-def api_events_post():
-    return api_events_add()
