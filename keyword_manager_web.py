@@ -161,25 +161,23 @@ def _dt_to_fullcalendar(dt, is_all_day):
 
 
 # ===============================
-# ✅ PWA (manifest / service worker)
+# ✅ PWA (manifest / service worker) - ROOT SERVING FIX
 # ===============================
+from flask import make_response
+
 @app.route("/service-worker.js")
 def service_worker():
-    return send_from_directory(
-        "static",
-        "service-worker.js",
-        mimetype="application/javascript",
-        max_age=0
-    )
+    resp = make_response(send_from_directory(".", "service-worker.js"))
+    resp.headers["Content-Type"] = "application/javascript; charset=utf-8"
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
 
 @app.route("/manifest.webmanifest")
 def webmanifest():
-    return send_from_directory(
-        "static",
-        "manifest.webmanifest",
-        mimetype="application/manifest+json",
-        max_age=0
-    )
+    resp = make_response(send_from_directory(".", "manifest.webmanifest"))
+    resp.headers["Content-Type"] = "application/manifest+json; charset=utf-8"
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
 
 
 # ===============================
