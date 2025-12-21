@@ -487,3 +487,18 @@ def api_presence_list():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="0.0.0.0", port=port)
+
+
+# ===============================
+# ✅ Rate API (CNY etc.)
+# ===============================
+@app.route("/api/rate")
+def api_rate():
+    # TODO: implement real scraping/lookup (kept minimal to match frontend)
+    return jsonify({"rate": None})
+
+
+# ✅ Frontend compatibility: POST /api/events
+            @app.route("/api/events", methods=["POST"])
+            def api_events_post():
+                return api_events_add()
