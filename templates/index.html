@@ -1,9 +1,22 @@
 <!doctype html>
 <html lang="ko">
-<head>  <!-- ✅ 모바일 입력창 눌렀을 때 확대(줌) 방지 -->
+<head>  
+  
+  <!-- iOS PWA 강제 인식 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Keyword Manager">
+
+<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+<link rel="apple-touch-icon" sizes="512x512" href="/static/icons/icon-512.png">
+
+<!-- viewport 없으면 반드시 추가 -->
+<!-- ✅ 모바일 입력창 눌렀을 때 확대(줌) 방지 -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 
   <title>Keyword Manager Web</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+
 
   <!-- FullCalendar -->
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
@@ -278,7 +291,6 @@
     .ev-title { overflow: hidden; text-overflow: ellipsis; }
     .ev-time { opacity: .75; flex: 0 0 auto; }
 
-
     /* ✅ presence */
     .presence-bar{
       display:flex;
@@ -294,8 +306,8 @@
     }
     .presence-avatars{
       display:flex;
-      align-items:center;
-      gap:8px;
+      align-items:flex-start;
+      gap:10px;
       flex-wrap:nowrap;
     }
     .presence-item{
@@ -312,6 +324,7 @@
       margin-top:2px;
       white-space:nowrap;
     }
+
     .presence-avatar{
       width:34px;
       height:34px;
@@ -378,7 +391,7 @@
     .modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,55);
+      background: rgba(0,0,0,.55);
       display: none;
       align-items: center;
       justify-content: center;
@@ -393,7 +406,7 @@
       border: 1px solid var(--line);
       border-radius: 16px;
       padding: 12px;
-      pointer-events: auto; /* ✅ 저장 버튼 탭 무시되는 현상 방지 */
+      pointer-events: auto;
     }
     .modal h4 { margin: 4px 2px 10px; font-size: 14px; font-weight: 600; }
     .modal .grid {
@@ -423,6 +436,28 @@
     <div class="section">
       <div class="section-title">
         <h3>채팅</h3>
+        
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="mini icon-btn" id="noticeSettingsBtn" type="button" aria-label="공지설정" style="width:44px;">
+            <span aria-hidden="true" style="font-size:18px; line-height:1;">🔔</span>
+            <div style="font-size:10px; margin-top:2px; color:rgba(255,255,255,.75); font-weight:600;">공지설정</div>
+          </button>
+
+          <button class="mini icon-btn" id="androidInstallBtn" type="button" aria-label="Android 설치" style="width:44px; display:none;">
+            <span aria-hidden="true" style="font-size:18px; line-height:1;">⬇️</span>
+            <div style="font-size:10px; margin-top:2px; color:rgba(255,255,255,.75); font-weight:600;">Android설치</div>
+          </button>
+
+          <button class="mini icon-btn" id="iosHowtoBtn" type="button" aria-label="iOS 설치방법" style="width:44px; display:none;">
+            <span aria-hidden="true" style="font-size:18px; line-height:1;">📱</span>
+            <div style="font-size:10px; margin-top:2px; color:rgba(255,255,255,.75); font-weight:600;">iOS설치</div>
+          </button>
+
+
+
+          <!-- (기존 테스트/알림 버튼은 설정 모달로 이동) -->
+        </div>
+
       </div>
 
       <div class="presence-bar">
@@ -506,6 +541,8 @@
       </div>
     </div>
   </div>
+
+  <script src="/static/pwa-push.js"></script>
 
   <script>
     // =========================
@@ -905,8 +942,8 @@
 
       calendar = new FullCalendar.Calendar(calEl, {
         initialView: "dayGridMonth",
-          timeZone: "Asia/Seoul",
-      displayEventTime: false,
+        timeZone: "Asia/Seoul",
+        displayEventTime: false,
         height: "auto",
         expandRows: true,
         nowIndicator: true,
@@ -966,39 +1003,226 @@
       calendar.render();
     }
 
-
     // ✅ FullCalendar init
+    document.addEventListener("DOMContentLoaded", async () => {
+      try {
+        await initCalendar();
 
-    // ✅ FullCalendar init
-document.addEventListener("DOMContentLoaded", async () => {
-  try {
-    await initCalendar();
+        // ✅ 채팅 시작
+        pollChat();
+        startPresence();
 
-    // ✅ 채팅 시작
-    pollChat();
-    startPresence();
+        // ✅ 새로고침 버튼
+        document.getElementById("refreshCalendarBtn")?.addEventListener("click", (e) => {
+          e.preventDefault(); e.stopPropagation();
+          const btn = document.getElementById("refreshCalendarBtn");
+          if (btn) btn.classList.add("spinning");
+          try { if (calendar) calendar.refetchEvents(); } catch(e2) {}
+          setTimeout(() => { if (btn) btn.classList.remove("spinning"); }, 800);
+        });
 
-    // ✅ 새로고침 버튼
-    document.getElementById("refreshCalendarBtn")?.addEventListener("click", (e) => {
-      e.preventDefault(); e.stopPropagation();
-      const btn = document.getElementById("refreshCalendarBtn");
-      if (btn) btn.classList.add("spinning");
-      try { if (calendar) calendar.refetchEvents(); } catch(e2) {}
-      setTimeout(() => { if (btn) btn.classList.remove("spinning"); }, 800);
+      } catch(e) {}
     });
 
-  } catch(e) {}
-});
+    // ✅ 메모 새로고침(그대로 유지)
+    const refreshMemosBtn = document.getElementById("refreshMemosBtn");
+    if (refreshMemosBtn) {
+      refreshMemosBtn.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        refreshMemosBtn.classList.add("spinning");
+        setTimeout(() => window.location.reload(), 60);
+      });
+    }
   
-// ✅ 메모 새로고침(그대로 유지)
-const refreshMemosBtn = document.getElementById("refreshMemosBtn");
-if (refreshMemosBtn) {
-  refreshMemosBtn.addEventListener("click", (e) => {
-    e.preventDefault(); e.stopPropagation();
-    refreshMemosBtn.classList.add("spinning");
-    setTimeout(() => window.location.reload(), 60);
-  });
-}
-</script>
+    // =========================
+    // ✅ 공지설정(🔔) - 알림 권한/테스트
+    // =========================
+    const noticeSettingsBtn = document.getElementById("noticeSettingsBtn");
+    const noticeSettingsModal = document.getElementById("noticeSettingsModal");
+    const noticeSettingsCloseBtn = document.getElementById("noticeSettingsCloseBtn");
+    const noticeEnableBtn = document.getElementById("noticeEnableBtn");
+    const noticeTestBtn = document.getElementById("noticeTestBtn");
+    const noticePermissionState = document.getElementById("noticePermissionState");
+
+    function _updateNoticePermissionText(){
+      try{
+        const p = (window.Notification && Notification.permission) ? Notification.permission : "unsupported";
+        const map = { "granted":"허용됨", "denied":"차단됨", "default":"미설정", "unsupported":"미지원" };
+        if (noticePermissionState) noticePermissionState.textContent = "권한 상태: " + (map[p] || p);
+        if (noticeEnableBtn) {
+          noticeEnableBtn.disabled = (p === "granted" || p === "unsupported");
+          noticeEnableBtn.textContent = (p === "granted") ? "알림 켜짐" : "알림 켜기";
+        }
+      }catch(e){}
+    }
+
+    if (noticeSettingsBtn) {
+      noticeSettingsBtn.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (noticeSettingsModal) noticeSettingsModal.style.display = "flex";
+        _updateNoticePermissionText();
+      });
+    }
+    if (noticeSettingsCloseBtn) {
+      noticeSettingsCloseBtn.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (noticeSettingsModal) noticeSettingsModal.style.display = "none";
+      });
+    }
+    if (noticeSettingsModal) {
+      noticeSettingsModal.addEventListener("click", (e) => {
+        if (e.target === noticeSettingsModal) noticeSettingsModal.style.display = "none";
+      });
+    }
+
+    // ✅ 알림 켜기: 기존 pwa-push.js 함수 재사용
+    if (noticeEnableBtn) {
+      noticeEnableBtn.addEventListener("click", async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        try {
+          const name = ((document.getElementById("chatSender")?.value || "익명").trim()) || "익명";
+          if (typeof pwaEnableNotifications === "function") {
+            await pwaEnableNotifications(name);
+          } else {
+            alert("pwaEnableNotifications 함수가 없습니다. /static/pwa-push.js 확인 필요");
+          }
+        } catch (e2) {
+        } finally {
+          _updateNoticePermissionText();
+        }
+      });
+    }
+
+    // ✅ 테스트 알림: 서비스용에서는 숨기고 싶으면 여기만 막으면 됨
+    if (noticeTestBtn) {
+      noticeTestBtn.addEventListener("click", async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        try {
+          const name = ((document.getElementById("chatSender")?.value || "익명").trim()) || "익명";
+          if (typeof pwaTestPush === "function") {
+            await pwaTestPush(name);
+          } else {
+            alert("pwaTestPush 함수가 없습니다. /static/pwa-push.js 확인 필요");
+          }
+        } catch (e2) {}
+      });
+    }
+
+    // 초기 반영
+    _updateNoticePermissionText();
+
+  
+    // =========================
+    // ✅ PWA 설치(Android / iOS)
+    // =========================
+    const _ua = navigator.userAgent || "";
+    const _isAndroid = /Android/i.test(_ua);
+    const _isIOS = /iPhone|iPad|iPod/i.test(_ua);
+    const _isStandalone =
+      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+      (window.navigator.standalone === true);
+
+    const androidInstallBtn = document.getElementById("androidInstallBtn");
+    const iosHowtoBtn = document.getElementById("iosHowtoBtn");
+    const iosInstallModal = document.getElementById("iosInstallModal");
+    const iosInstallCloseBtn = document.getElementById("iosInstallCloseBtn");
+
+    // iOS: 설치 안내
+    if (_isIOS && !_isStandalone && iosHowtoBtn) {
+      iosHowtoBtn.style.display = "inline-flex";
+      iosHowtoBtn.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (iosInstallModal) iosInstallModal.style.display = "flex";
+      });
+    }
+    if (iosInstallCloseBtn) {
+      iosInstallCloseBtn.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (iosInstallModal) iosInstallModal.style.display = "none";
+      });
+    }
+    if (iosInstallModal) {
+      iosInstallModal.addEventListener("click", (e) => {
+        if (e.target === iosInstallModal) iosInstallModal.style.display = "none";
+      });
+    }
+
+    // Android: beforeinstallprompt로 설치 팝업 제어
+    let deferredPrompt = null;
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      if (_isAndroid && !_isStandalone && androidInstallBtn) {
+        androidInstallBtn.style.display = "inline-flex";
+      }
+    });
+
+    if (androidInstallBtn) {
+      androidInstallBtn.addEventListener("click", async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (!deferredPrompt) {
+          alert("아직 설치 조건이 충족되지 않았습니다. (manifest/service-worker 조건 확인 필요)");
+          return;
+        }
+        deferredPrompt.prompt();
+        try { await deferredPrompt.userChoice; } catch (_) {}
+        deferredPrompt = null;
+        androidInstallBtn.style.display = "none";
+      });
+    }
+
+    window.addEventListener("appinstalled", () => {
+      if (androidInstallBtn) androidInstallBtn.style.display = "none";
+    });
+
+  </script>
+
+  <!-- ✅ 공지 설정 모달(알림 권한/구독) -->
+  <div id="noticeSettingsModal" class="modal-backdrop" style="display:none;">
+    <div class="modal" style="max-width:520px;">
+      <h4 style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <span>공지 설정</span>
+        <button id="noticeSettingsCloseBtn" type="button" class="mini" style="width:auto; padding:8px 10px;">닫기</button>
+      </h4>
+
+      <div class="hint" style="margin:0 2px 10px;">
+        공지/알림을 받으려면 브라우저 알림 권한이 필요합니다.
+      </div>
+
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.04); margin-bottom:10px;">
+        <div>
+          <div style="font-weight:600;">푸시 알림 받기</div>
+          <div class="hint" id="noticePermissionState">권한 상태: -</div>
+        </div>
+        <button id="noticeEnableBtn" type="button" class="primary mini" style="width:auto; padding:10px 12px;">알림 켜기</button>
+      </div>
+
+      <div class="hint" style="margin:0 2px 6px;">(선택) 알림이 잘 오는지 확인</div>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button id="noticeTestBtn" type="button" class="mini" style="width:auto; padding:10px 12px;">테스트 알림</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ✅ iOS 설치 안내 모달 -->
+  <div id="iosInstallModal" class="modal-backdrop" style="display:none;">
+    <div class="modal" style="max-width:520px;">
+      <h4 style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <span>iOS 설치 방법</span>
+        <button id="iosInstallCloseBtn" type="button" class="mini" style="width:auto; padding:8px 10px;">닫기</button>
+      </h4>
+      <div class="hint" style="margin:0 2px 10px;">
+        iOS(Safari)는 설치 팝업이 뜨지 않습니다. 아래 순서로 “홈 화면에 추가”를 해주세요.
+      </div>
+      <div style="font-size:13px; line-height:1.5; padding:0 2px;">
+        1) Safari에서 이 페이지 열기<br>
+        2) 하단(또는 상단) <b>공유</b> 버튼 누르기<br>
+        3) <b>홈 화면에 추가</b> 선택<br>
+        4) 추가된 아이콘으로 실행
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>
