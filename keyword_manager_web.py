@@ -271,33 +271,28 @@ def api_chat_messages():
 @app.route("/api/chat/send", methods=["POST"])
 def api_chat_send():
     data = request.get_json(silent=True) or {}
-    room = (data.get("room") or "main").strip()
-    sender = (data.get("sender") or "익명").strip()
+    room = (data.get("room") or "main").strip()[:50]
+    sender = (data.get("sender") or "").strip()[:50]
     message = (data.get("message") or "").strip()
+
     if not message:
         return jsonify({"ok": False, "error": "empty message"}), 400
 
     if not _DB_URL or psycopg is None:
         return jsonify({"ok": True})
+
+    try:
+        with _get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "insert into chat_messages(room, sender, message) values (%s,%s,%s)",
+                    (room, sender, message),
+                )
+            conn.commit()
+        return jsonify({"ok": True})
     except Exception as e:
-        print('[events POST error]', repr(e))
-        return jsonify({'ok': False, 'error': str(e)}), 500
-
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "insert into chat_messages (room, sender, message) values (%s, %s, %s) returning id",
-                (room, sender, message),
-            )
-            new_id = cur.fetchone()[0]
-        conn.commit()
-
-    # (옵션) 새 메시지 발생 시 푸시 보내고 싶으면 여기서 send_push 호출 가능
-    # if send_push:
-    #     send_push({"title": "새 메시지", "body": f"{sender}: {message}", "url": "/"})
-
-    return jsonify({"ok": True, "id": new_id})
-
+        print("[chat send error]", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 # ===============================
 # ✅ Memos API
@@ -393,48 +388,55 @@ def api_events():
 @app.route("/api/events/add", methods=["POST"])
 def api_events_add():
     data = request.get_json(silent=True) or {}
-
     title = (data.get("title") or "").strip()
     memo = (data.get("memo") or "").strip()
     all_day = bool(data.get("allDay") or data.get("all_day") or False)
 
-    # ✅ 프론트가 {start/end} 또는 {date}로 보내는 경우 모두 지원
+    # ✅ 프론트가 {start/end}로 보내는 경우도 지원
     date = (data.get("date") or "").strip()
     if not date:
         date = (data.get("start") or "").strip()
+    # FullCalendar는 ISO datetime을 줄 수 있음 → 날짜만
+    if 'T' in date:
+        date = date.split('T', 1)[0]
 
-    # FullCalendar가 ISO datetime을 줄 수 있음 → 날짜만
-    if isinstance(date, str) and "T" in date:
-        date = date.split("T", 1)[0]
+    # ✅ 프론트에서 보내는 형식 통합 지원
+    # - 기존: {date: 'YYYY-MM-DD', start: 'HH:MM', end: 'HH:MM'}
+    # - 현재 UI/FullCalendar: {start: 'YYYY-MM-DD' or ISO, end: 'YYYY-MM-DD' or ISO}
+    def _split_dt(v: str):
+        v = (v or "").strip()
+        if not v:
+            return "", ""
+        # ISO(YYYY-MM-DDTHH:MM...) 형태면 날짜/시각 분리
+        if "T" in v:
+            d, t = v.split("T", 1)
+            t = t.split("+", 1)[0].split("Z", 1)[0]
+            t = t[:5]  # HH:MM
+            return d.strip(), t.strip()
+        # YYYY-MM-DD만 오면 날짜로 취급
+        if len(v) >= 10 and v[4] == "-" and v[7] == "-":
+            return v[:10], ""
+        # HH:MM만 오면 시각으로 취급
+        return "", v
+
+    start_raw = (data.get("start") or "").strip()
+    end_raw = (data.get("end") or "").strip()
+
+    d1, t1 = _split_dt(start_raw)
+    d2, t2 = _split_dt(end_raw)
+
+    if not date:
+        # date가 없으면 start에서 날짜를 뽑아 사용
+        date = d1 or d2
+
+    start_time = t1
+    end_time = t2
 
     if not title or not date:
         return jsonify({"ok": False, "error": "missing title/date"}), 400
 
-    # ✅ 시간 파라미터는 선택 (없으면 NULL)
-    start_time = (data.get("startTime") or data.get("start_time") or "").strip()
-    end_time = (data.get("endTime") or data.get("end_time") or "").strip()
-
-    # all_day면 시간은 저장하지 않음
-    if all_day:
-        start_time = ""
-        end_time = ""
-
-    start_time = start_time or None
-    end_time = end_time or None
-
     if not _DB_URL or psycopg is None:
         return jsonify({"ok": True})
-
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            _ensure_calendar_schema(cur)
-            cur.execute(
-                "insert into calendar_events (title, date, start_time, end_time, memo, all_day) values (%s, %s, %s, %s, %s, %s)",
-                (title, date, start_time, end_time, memo or None, all_day),
-            )
-        conn.commit()
-
-    return jsonify({"ok": True})
 
     with _get_conn() as conn:
         with conn.cursor() as cur:
