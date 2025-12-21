@@ -439,6 +439,7 @@
       <div class="section-title">
         <h3>채팅</h3>
         <div style="display:flex; gap:8px; align-items:center;">
+          <button class="mini icon-btn" id="androidInstallBtn" type="button" aria-label="Android 설치">⬇️</button>
           <button class="mini" type="button" onclick="pwaEnableNotifications((document.getElementById('chatSender')?.value||'익명').trim()||'익명')">알림 켜기</button>
           <button class="mini" type="button" onclick="pwaTestPush((document.getElementById('chatSender')?.value||'익명').trim()||'익명')">푸시 테스트</button>
         </div>
@@ -1093,6 +1094,32 @@
         } catch (e) {}
       });
     }
+
+  
+    // ANDROID_INSTALL_ALWAYS_VISIBLE
+    let __deferredPrompt = null;
+
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      __deferredPrompt = e;
+    });
+
+    const __androidBtn = document.getElementById("androidInstallBtn");
+    if (__androidBtn) {
+      __androidBtn.addEventListener("click", async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (!__deferredPrompt) {
+          alert("아직 설치 조건이 충족되지 않았습니다.\n\n1) 크롬 메뉴(⋮)에 '앱 설치'가 있는지 확인\n2) 없다면 사이트 데이터 삭제 후 다시 접속\n3) 잠시 사용 후 다시 시도");
+          return;
+        }
+        __deferredPrompt.prompt();
+        try { await __deferredPrompt.userChoice; } catch(_) {}
+        __deferredPrompt = null;
+      });
+    }
+    window.addEventListener("appinstalled", () => {
+      try { if (__androidBtn) __androidBtn.style.display = "none"; } catch(_) {}
+    });
 
   </script>
 
