@@ -27,168 +27,146 @@ def get_conn():
     return psycopg.connect(db_url, connect_timeout=10)
 
 def ensure_db():
+    """Create/upgrade DB schema on startup (Supabase Postgres)."""
     global _DB_READY
     if _DB_READY:
         return
 
-    with _DB_LOCK:
-        if _DB_READY:
-            return
-
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                # memos
-                cur.execute(
-                    """
-                    create table if not exists memos(
-                        id bigserial primary key,
-                        content text unique,
-                        created_at timestamptz not null default now()
-                    )
-                    """
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            # ===== chat =====
+            cur.execute(
+                """
+                create table if not exists chat_messages (
+                    id bigserial primary key,
+                    room text not null default 'main',
+                    sender text not null,
+                    message text not null,
+                    created_at timestamptz not null default now()
                 )
+                """
+            )
 
-                # chat_messages
-                cur.execute(
-                    """
-                    create table if not exists chat_messages(
-                        id bigserial primary key,
-                        room text not null default 'main',
-                        sender text,
-                        message text,
-                        created_at timestamptz not null default now()
-                    )
-                    """
+            # ===== memo =====
+            cur.execute(
+                """
+                create table if not exists memos (
+                    id bigserial primary key,
+                    text text not null,
+                    created_at timestamptz not null default now()
                 )
-                # ✅ client_id 컬럼 없으면 추가
-                cur.execute(
-                    """
-                    select 1
-                    from information_schema.columns
-                    where table_schema='public' and table_name='chat_messages' and column_name='client_id'
-                    """
+                """
+            )
+
+            # ===== presence =====
+            cur.execute(
+                """
+                create table if not exists presence (
+                    client_id text primary key,
+                    sender text,
+                    animal text,
+                    last_seen timestamptz not null default now()
                 )
-                if cur.fetchone() is None:
-                    cur.execute("alter table chat_messages add column client_id text")
+                """
+            )
 
-                # calendar_events
-                cur.execute(
-                    """
-                    create table if not exists calendar_events(
-                        id bigserial primary key,
-                        title text,
-                        start_at timestamptz,
-                        end_at timestamptz,
-                        memo text,
-                        all_day int4 not null default 0,
-                        created_at timestamptz not null default now()
-                    )
-                    """
+            # ===== calendar =====
+            cur.execute(
+                """
+                create table if not exists calendar_events (
+                    id bigserial primary key,
+                    title text not null,
+                    start_at timestamptz,
+                    end_at timestamptz,
+                    memo text,
+                    all_day boolean not null default false
                 )
+                """
+            )
 
-                
-        _ensure_calendar_events_columns(cur)
-# presence
-                cur.execute(
-                    """
-                    create table if not exists presence(
-                        client_id text primary key,
-                        sender text,
-                        animal text,
-                        last_seen timestamptz not null default now(),
-                        user_agent text
-                    )
-                    """
+            # ---- migrate calendar columns (old schema compatibility) ----
+            cur.execute(
+                """
+                select column_name
+                from information_schema.columns
+                where table_schema='public' and table_name='calendar_events'
+                """
+            )
+            cal_cols = {r[0] for r in cur.fetchall()}
+
+            if "start_at" not in cal_cols:
+                cur.execute("alter table calendar_events add column if not exists start_at timestamptz")
+                if "start_time" in cal_cols:
+                    cur.execute("update calendar_events set start_at = start_time where start_at is null")
+            if "end_at" not in cal_cols:
+                cur.execute("alter table calendar_events add column if not exists end_at timestamptz")
+                if "end_time" in cal_cols:
+                    cur.execute("update calendar_events set end_at = end_time where end_at is null")
+            if "memo" not in cal_cols:
+                cur.execute("alter table calendar_events add column if not exists memo text")
+            if "all_day" not in cal_cols:
+                cur.execute("alter table calendar_events add column if not exists all_day boolean not null default false")
+
+            # ===== push subscriptions (store full WebPush subscription json) =====
+            cur.execute(
+                """
+                create table if not exists push_subscriptions (
+                    id bigserial primary key,
+                    client_id text not null,
+                    platform text,
+                    endpoint text not null,
+                    subscription jsonb not null,
+                    updated_at timestamptz not null default now()
                 )
-                cur.execute("alter table presence add column if not exists sender text")
-                cur.execute("alter table presence add column if not exists animal text")
-                cur.execute("alter table presence add column if not exists last_seen timestamptz not null default now()")
-                cur.execute("alter table presence add column if not exists user_agent text")
+                """
+            )
+            # if table existed with older columns, ensure required ones exist
+            cur.execute(
+                """
+                select column_name
+                from information_schema.columns
+                where table_schema='public' and table_name='push_subscriptions'
+                """
+            )
+            push_cols = {r[0] for r in cur.fetchall()}
+            if "subscription" not in push_cols:
+                cur.execute("alter table push_subscriptions add column if not exists subscription jsonb")
+            if "updated_at" not in push_cols:
+                cur.execute("alter table push_subscriptions add column if not exists updated_at timestamptz not null default now()")
+            if "client_id" not in push_cols:
+                cur.execute("alter table push_subscriptions add column if not exists client_id text")
+            if "platform" not in push_cols:
+                cur.execute("alter table push_subscriptions add column if not exists platform text")
+            if "endpoint" not in push_cols:
+                cur.execute("alter table push_subscriptions add column if not exists endpoint text")
 
-                # ✅ push_subscriptions (PWA 푸시 구독 저장)
-                cur.execute(
-                    """
-                    create table if not exists push_subscriptions(
-                        id bigserial primary key,
-                        client_id text,
-                        platform text,
-                        endpoint text unique,
-                        subscription jsonb not null,
-                        created_at timestamptz not null default now(),
-                        updated_at timestamptz not null default now()
-                    )
-                    """
-                )
+            # unique endpoint for upsert
+            cur.execute("create unique index if not exists push_subscriptions_endpoint_uq on push_subscriptions(endpoint)")
 
-            
-
-# ✅ (구버전 DB 호환) push_subscriptions 누락 컬럼 보강
-try:
-    cur.execute("alter table push_subscriptions add column if not exists subscription jsonb")
-    cur.execute("alter table push_subscriptions add column if not exists client_id text")
-    cur.execute("alter table push_subscriptions add column if not exists platform text")
-    cur.execute("alter table push_subscriptions add column if not exists created_at timestamptz not null default now()")
-except Exception:
-    pass
-conn.commit()
-
+        conn.commit()
         _DB_READY = True
-
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 def _ensure_calendar_events_columns(cur):
-    """DB 스키마가 예전 버전과 섞여도(컬럼명 변경) 최소 동작 보장."""
-    try:
-        cur.execute(
-            """
-            select column_name
-            from information_schema.columns
-            where table_schema='public' and table_name='calendar_events'
-            """
-        )
-        cols = {r[0] for r in cur.fetchall()}
-    except Exception:
-        cols = set()
-
-    # ✅ 현재 코드가 기대하는 컬럼들
-    # (예전 테이블에 없을 수 있으니 ALTER로 보강)
-    try:
-        if "start_at" not in cols:
-            cur.execute("alter table calendar_events add column if not exists start_at timestamptz")
-        if "end_at" not in cols:
-            cur.execute("alter table calendar_events add column if not exists end_at timestamptz")
-        if "memo" not in cols:
-            cur.execute("alter table calendar_events add column if not exists memo text")
-        if "all_day" not in cols:
-            cur.execute("alter table calendar_events add column if not exists all_day int4 not null default 0")
-        if "created_at" not in cols:
-            cur.execute("alter table calendar_events add column if not exists created_at timestamptz not null default now()")
-    except Exception:
-        # sqlite 등 다른 엔진이면 여기로 떨어질 수 있음(현재 Render/Supabase는 Postgres)
-        pass
-
-    # ✅ 혹시 예전 컬럼명이 start/end 라면 값 이관(있을 때만 시도)
-    try:
-        # 컬럼 재조회(ALTER 이후)
-        cur.execute(
-            """
-            select column_name
-            from information_schema.columns
-            where table_schema='public' and table_name='calendar_events'
-            """
-        )
-        cols2 = {r[0] for r in cur.fetchall()}
-
-        if "start_at" in cols2 and "start" in cols2:
-            cur.execute("update calendar_events set start_at = start where start_at is null and start is not null")
-        if "end_at" in cols2 and "end" in cols2:
-            cur.execute("update calendar_events set end_at = end where end_at is null and end is not null")
-        if "start_at" in cols2 and "start_time" in cols2:
-            cur.execute("update calendar_events set start_at = start_time where start_at is null and start_time is not null")
-        if "end_at" in cols2 and "end_time" in cols2:
-            cur.execute("update calendar_events set end_at = end_time where end_at is null and end_time is not null")
-    except Exception:
-        pass
-
+    cur.execute(
+        """
+        select column_name
+        from information_schema.columns
+        where table_schema='public' and table_name='calendar_events'
+        """
+    )
+    cols = {r[0] for r in cur.fetchall()}
+    if "memo" not in cols:
+        cur.execute("alter table calendar_events add column memo text")
+    if "created_at" not in cols:
+        cur.execute("alter table calendar_events add column created_at timestamptz not null default now()")
+    if "all_day" not in cols:
+        cur.execute("alter table calendar_events add column all_day int4 not null default 0")
 
 
 def _parse_dt(s):
