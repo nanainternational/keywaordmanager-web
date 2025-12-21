@@ -137,11 +137,68 @@ _init_db()
 # ===============================
 # ✅ Static / Templates
 # ===============================
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def index():
+    # 기존 index.html은 form POST를 "/"로 보내는 구조가 있어 405가 발생할 수 있음.
+    # POST(action)를 서버에서 처리한 뒤 다시 "/"로 돌아오게 처리한다.
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip()
+
+        # ✅ 메모 추가
+        if action == "add_memo":
+            text = (request.form.get("memo_text") or request.form.get("text") or "").strip()
+            if text and _DB_URL and psycopg is not None:
+                with _get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("insert into memos (text) values (%s)", (text,))
+                    conn.commit()
+
+        # ✅ 메모 삭제
+        elif action == "delete_memo":
+            memo_id = (request.form.get("memo_id") or request.form.get("id") or "").strip()
+            try:
+                memo_id_i = int(memo_id)
+            except Exception:
+                memo_id_i = None
+            if memo_id_i and _DB_URL and psycopg is not None:
+                with _get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("delete from memos where id=%s", (memo_id_i,))
+                    conn.commit()
+
+        # ✅ 일정 추가
+        elif action == "add_event":
+            title = (request.form.get("title") or "").strip()
+            date = (request.form.get("date") or "").strip()
+            start_time = (request.form.get("start") or request.form.get("start_time") or "").strip()
+            end_time = (request.form.get("end") or request.form.get("end_time") or "").strip()
+            if title and date and _DB_URL and psycopg is not None:
+                with _get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "insert into calendar_events (title, date, start_time, end_time) values (%s, %s, %s, %s)",
+                            (title, date, start_time or None, end_time or None),
+                        )
+                    conn.commit()
+
+        # ✅ 일정 삭제
+        elif action == "delete_event":
+            event_id = (request.form.get("event_id") or request.form.get("id") or "").strip()
+            try:
+                event_id_i = int(event_id)
+            except Exception:
+                event_id_i = None
+            if event_id_i and _DB_URL and psycopg is not None:
+                with _get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("delete from calendar_events where id=%s", (event_id_i,))
+                    conn.commit()
+
+        # POST 처리 후 새로고침(중복전송 방지)
+        from flask import redirect
+        return redirect("/")
+
     return render_template("index.html")
-
-
 @app.route("/rate")
 def rate_page():
     return render_template("rate.html")
