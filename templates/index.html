@@ -439,8 +439,7 @@
       <div class="section-title">
         <h3>채팅</h3>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="mini icon-btn" id="androidInstallBtn" type="button" aria-label="Android 설치">⬇️</button>
-          <button class="mini" type="button" onclick="pwaEnableNotifications((document.getElementById('chatSender')?.value||'익명').trim()||'익명')">알림 켜기</button>
+<button class="mini" type="button" onclick="pwaEnableNotifications((document.getElementById('chatSender')?.value||'익명').trim()||'익명')">알림 켜기</button>
           <button class="mini" type="button" onclick="pwaTestPush((document.getElementById('chatSender')?.value||'익명').trim()||'익명')">푸시 테스트</button>
         </div>
       </div>
@@ -1019,73 +1018,6 @@
       });
     }
   
-    // =========================
-    // ✅ PWA 설치(안드로이드/아이폰)
-    // =========================
-    const _ua = navigator.userAgent || "";
-    const _isAndroid = /Android/i.test(_ua);
-    const _isIOS = /iPhone|iPad|iPod/i.test(_ua);
-    const _isStandalone =
-      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
-      (window.navigator.standalone === true);
-
-    const androidInstallBtn = document.getElementById("androidInstallBtn");
-    const iosHowtoBtn = document.getElementById("iosHowtoBtn");
-    const iosInstallModal = document.getElementById("iosInstallModal");
-    const iosInstallCloseBtn = document.getElementById("iosInstallCloseBtn");
-
-    // iOS: 설치방법 버튼만 노출(설치된 상태면 숨김)
-    if (_isIOS && !_isStandalone && iosHowtoBtn) {
-      iosHowtoBtn.style.display = "inline-block";
-      iosHowtoBtn.addEventListener("click", (e) => {
-        e.preventDefault(); e.stopPropagation();
-        if (iosInstallModal) iosInstallModal.style.display = "flex";
-      });
-    }
-
-    if (iosInstallCloseBtn) {
-      iosInstallCloseBtn.addEventListener("click", (e) => {
-        e.preventDefault(); e.stopPropagation();
-        if (iosInstallModal) iosInstallModal.style.display = "none";
-      });
-    }
-    if (iosInstallModal) {
-      iosInstallModal.addEventListener("click", (e) => {
-        if (e.target === iosInstallModal) iosInstallModal.style.display = "none";
-      });
-    }
-
-    // Android: beforeinstallprompt로 설치 팝업 직접 호출
-    let deferredPrompt = null;
-
-    window.addEventListener("beforeinstallprompt", (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-
-      if (_isAndroid && !_isStandalone && androidInstallBtn) {
-        androidInstallBtn.style.display = "inline-block";
-      }
-    });
-
-    if (androidInstallBtn) {
-      androidInstallBtn.addEventListener("click", async (e) => {
-        e.preventDefault(); e.stopPropagation();
-        if (!deferredPrompt) {
-          alert("아직 설치 조건이 충족되지 않았습니다. (manifest/service-worker 조건 확인 필요)");
-          return;
-        }
-        deferredPrompt.prompt();
-        try { await deferredPrompt.userChoice; } catch (_) {}
-        deferredPrompt = null;
-        androidInstallBtn.style.display = "none";
-      });
-    }
-
-    window.addEventListener("appinstalled", () => {
-      if (androidInstallBtn) androidInstallBtn.style.display = "none";
-    });
-
-  
     // ✅ Service Worker 등록(루트)
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", async () => {
@@ -1096,51 +1028,11 @@
     }
 
   
-    // ANDROID_INSTALL_ALWAYS_VISIBLE
-    let __deferredPrompt = null;
 
-    window.addEventListener("beforeinstallprompt", (e) => {
-      e.preventDefault();
-      __deferredPrompt = e;
-    });
-
-    const __androidBtn = document.getElementById("androidInstallBtn");
-    if (__androidBtn) {
-      __androidBtn.addEventListener("click", async (e) => {
-        e.preventDefault(); e.stopPropagation();
-        if (!__deferredPrompt) {
-          alert("아직 설치 조건이 충족되지 않았습니다.\n\n1) 크롬 메뉴(⋮)에 '앱 설치'가 있는지 확인\n2) 없다면 사이트 데이터 삭제 후 다시 접속\n3) 잠시 사용 후 다시 시도");
-          return;
-        }
-        __deferredPrompt.prompt();
-        try { await __deferredPrompt.userChoice; } catch(_) {}
-        __deferredPrompt = null;
-      });
-    }
-    window.addEventListener("appinstalled", () => {
-      try { if (__androidBtn) __androidBtn.style.display = "none"; } catch(_) {}
-    });
 
   </script>
 
-  <!-- ✅ iOS 설치 안내 모달 -->
-  <div id="iosInstallModal" class="modal-backdrop" style="display:none;">
-    <div class="modal" style="max-width:520px;">
-      <h4 style="margin:4px 2px 10px; font-size:14px; font-weight:600;">iOS 설치 방법</h4>
-      <div class="hint" style="margin:0 2px 10px;">
-        iOS(Safari)는 설치 팝업이 뜨지 않습니다. 아래 순서로 “홈 화면에 추가”를 해주세요.
-      </div>
-      <div style="font-size:13px; line-height:1.5; padding:0 2px;">
-        1) Safari에서 이 페이지 열기<br>
-        2) 하단(또는 상단) <b>공유</b> 버튼 누르기<br>
-        3) <b>홈 화면에 추가</b> 선택<br>
-        4) 추가된 아이콘으로 실행
-      </div>
-      <div class="actions" style="justify-content:flex-end;">
-        <button id="iosInstallCloseBtn" type="button" class="primary" style="width:auto; padding:10px 14px;">확인</button>
-      </div>
-    </div>
-  </div>
+  
 
 </body>
 </html>
