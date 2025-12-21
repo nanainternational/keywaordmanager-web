@@ -1,17 +1,6 @@
 <!doctype html>
 <html lang="ko">
-<head>  
-  
-  <!-- iOS PWA 강제 인식 -->
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Keyword Manager">
-
-<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-<link rel="apple-touch-icon" sizes="512x512" href="/static/icons/icon-512.png">
-
-<!-- viewport 없으면 반드시 추가 -->
-<!-- ✅ 모바일 입력창 눌렀을 때 확대(줌) 방지 -->
+<head>  <!-- ✅ 모바일 입력창 눌렀을 때 확대(줌) 방지 -->
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 
   <title>Keyword Manager Web</title>
@@ -289,6 +278,7 @@
     .ev-title { overflow: hidden; text-overflow: ellipsis; }
     .ev-time { opacity: .75; flex: 0 0 auto; }
 
+
     /* ✅ presence */
     .presence-bar{
       display:flex;
@@ -304,8 +294,8 @@
     }
     .presence-avatars{
       display:flex;
-      align-items:flex-start;
-      gap:10px;
+      align-items:center;
+      gap:8px;
       flex-wrap:nowrap;
     }
     .presence-item{
@@ -322,7 +312,6 @@
       margin-top:2px;
       white-space:nowrap;
     }
-
     .presence-avatar{
       width:34px;
       height:34px;
@@ -389,7 +378,7 @@
     .modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,.55);
+      background: rgba(0,0,0,55);
       display: none;
       align-items: center;
       justify-content: center;
@@ -404,7 +393,7 @@
       border: 1px solid var(--line);
       border-radius: 16px;
       padding: 12px;
-      pointer-events: auto;
+      pointer-events: auto; /* ✅ 저장 버튼 탭 무시되는 현상 방지 */
     }
     .modal h4 { margin: 4px 2px 10px; font-size: 14px; font-weight: 600; }
     .modal .grid {
@@ -434,10 +423,6 @@
     <div class="section">
       <div class="section-title">
         <h3>채팅</h3>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button class="mini" type="button" onclick="pwaEnableNotifications((document.getElementById('chatSender')?.value||'익명').trim()||'익명')">알림 켜기</button>
-          <button class="mini" type="button" onclick="pwaTestPush((document.getElementById('chatSender')?.value||'익명').trim()||'익명')">푸시 테스트</button>
-        </div>
       </div>
 
       <div class="presence-bar">
@@ -521,8 +506,6 @@
       </div>
     </div>
   </div>
-
-  <script src="/static/pwa-push.js"></script>
 
   <script>
     // =========================
@@ -922,8 +905,8 @@
 
       calendar = new FullCalendar.Calendar(calEl, {
         initialView: "dayGridMonth",
-        timeZone: "Asia/Seoul",
-        displayEventTime: false,
+          timeZone: "Asia/Seoul",
+      displayEventTime: false,
         height: "auto",
         expandRows: true,
         nowIndicator: true,
@@ -983,36 +966,39 @@
       calendar.render();
     }
 
+
     // ✅ FullCalendar init
-    document.addEventListener("DOMContentLoaded", async () => {
-      try {
-        await initCalendar();
 
-        // ✅ 채팅 시작
-        pollChat();
-        startPresence();
+    // ✅ FullCalendar init
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    await initCalendar();
 
-        // ✅ 새로고침 버튼
-        document.getElementById("refreshCalendarBtn")?.addEventListener("click", (e) => {
-          e.preventDefault(); e.stopPropagation();
-          const btn = document.getElementById("refreshCalendarBtn");
-          if (btn) btn.classList.add("spinning");
-          try { if (calendar) calendar.refetchEvents(); } catch(e2) {}
-          setTimeout(() => { if (btn) btn.classList.remove("spinning"); }, 800);
-        });
+    // ✅ 채팅 시작
+    pollChat();
+    startPresence();
 
-      } catch(e) {}
+    // ✅ 새로고침 버튼
+    document.getElementById("refreshCalendarBtn")?.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const btn = document.getElementById("refreshCalendarBtn");
+      if (btn) btn.classList.add("spinning");
+      try { if (calendar) calendar.refetchEvents(); } catch(e2) {}
+      setTimeout(() => { if (btn) btn.classList.remove("spinning"); }, 800);
     });
 
-    // ✅ 메모 새로고침(그대로 유지)
-    const refreshMemosBtn = document.getElementById("refreshMemosBtn");
-    if (refreshMemosBtn) {
-      refreshMemosBtn.addEventListener("click", (e) => {
-        e.preventDefault(); e.stopPropagation();
-        refreshMemosBtn.classList.add("spinning");
-        setTimeout(() => window.location.reload(), 60);
-      });
-    }
-  </script>
+  } catch(e) {}
+});
+  
+// ✅ 메모 새로고침(그대로 유지)
+const refreshMemosBtn = document.getElementById("refreshMemosBtn");
+if (refreshMemosBtn) {
+  refreshMemosBtn.addEventListener("click", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    refreshMemosBtn.classList.add("spinning");
+    setTimeout(() => window.location.reload(), 60);
+  });
+}
+</script>
 </body>
 </html>
