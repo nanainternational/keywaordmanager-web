@@ -86,7 +86,9 @@ def ensure_db():
                     """
                 )
 
-                # presence
+                
+        _ensure_calendar_events_columns(cur)
+# presence
                 cur.execute(
                     """
                     create table if not exists presence(
@@ -118,88 +120,75 @@ def ensure_db():
                     """
                 )
 
+            
 
-            # ✅ 기존 테이블 스키마가 과거 버전일 수 있으니, 누락 컬럼은 안전하게 추가(마이그레이션)
-            try:
-                # calendar_events (구버전: start_time/end_time 등으로 존재할 수 있음)
-                cur.execute("alter table calendar_events add column if not exists start_at timestamptz")
-                cur.execute("alter table calendar_events add column if not exists end_at timestamptz")
-                cur.execute("alter table calendar_events add column if not exists memo text")
-                cur.execute("alter table calendar_events add column if not exists all_day boolean default false")
-
-                # 구버전 컬럼명이 있을 때 데이터 이관(있을 때만)
-                cur.execute("""
-                do $$
-                begin
-                    if exists (
-                        select 1 from information_schema.columns
-                        where table_name='calendar_events' and column_name='start_time'
-                    ) then
-                        -- start_at이 비어있으면 start_time을 복사
-                        execute 'update calendar_events set start_at = start_time where start_at is null and start_time is not null';
-                    end if;
-
-                    if exists (
-                        select 1 from information_schema.columns
-                        where table_name='calendar_events' and column_name='end_time'
-                    ) then
-                        execute 'update calendar_events set end_at = end_time where end_at is null and end_time is not null';
-                    end if;
-                end $$;
-                """)
-
-                # push_subscriptions (구버전: subscription 컬럼이 없을 수 있음)
-                cur.execute("alter table push_subscriptions add column if not exists subscription jsonb")
-                cur.execute("alter table push_subscriptions add column if not exists client_id text")
-                cur.execute("alter table push_subscriptions add column if not exists platform text")
-
-                # 구버전(p256dh/auth) → subscription JSON으로 이관(있을 때만)
-                cur.execute("""
-                do $$
-                begin
-                    if exists (
-                        select 1 from information_schema.columns
-                        where table_name='push_subscriptions' and column_name='p256dh'
-                    )
-                    and exists (
-                        select 1 from information_schema.columns
-                        where table_name='push_subscriptions' and column_name='auth'
-                    ) then
-                        execute $q$
-                            update push_subscriptions
-                            set subscription = jsonb_build_object(
-                                'keys', jsonb_build_object('p256dh', p256dh, 'auth', auth)
-                            )
-                            where subscription is null
-                              and (p256dh is not null or auth is not null)
-                        $q$;
-                    end if;
-                end $$;
-                """)
-            except Exception as _e:
-                # 마이그레이션 실패하더라도 서비스는 뜨게 둠(로그로 확인)
-                print("ensure_db migration warning:", _e)
-
-            conn.commit()
+# ✅ (구버전 DB 호환) push_subscriptions 누락 컬럼 보강
+try:
+    cur.execute("alter table push_subscriptions add column if not exists subscription jsonb")
+    cur.execute("alter table push_subscriptions add column if not exists client_id text")
+    cur.execute("alter table push_subscriptions add column if not exists platform text")
+    cur.execute("alter table push_subscriptions add column if not exists created_at timestamptz not null default now()")
+except Exception:
+    pass
+conn.commit()
 
         _DB_READY = True
 
 
 def _ensure_calendar_events_columns(cur):
-    cur.execute(
-        """
-        select column_name
-        from information_schema.columns
-        where table_schema='public' and table_name='calendar_events'
-        """
-    )
-    cols = {r[0] for r in cur.fetchall()}
-    if "memo" not in cols:
-        cur.execute("alter table calendar_events add column memo text")
-    if "created_at" not in cols:
-        cur.execute("alter table calendar_events add column created_at timestamptz not null default now()")
-    if "all_day" not in cols:
-        cur.execute("alter table calendar_events add column all_day int4 not null default 0")
+    """DB 스키마가 예전 버전과 섞여도(컬럼명 변경) 최소 동작 보장."""
+    try:
+        cur.execute(
+            """
+            select column_name
+            from information_schema.columns
+            where table_schema='public' and table_name='calendar_events'
+            """
+        )
+        cols = {r[0] for r in cur.fetchall()}
+    except Exception:
+        cols = set()
+
+    # ✅ 현재 코드가 기대하는 컬럼들
+    # (예전 테이블에 없을 수 있으니 ALTER로 보강)
+    try:
+        if "start_at" not in cols:
+            cur.execute("alter table calendar_events add column if not exists start_at timestamptz")
+        if "end_at" not in cols:
+            cur.execute("alter table calendar_events add column if not exists end_at timestamptz")
+        if "memo" not in cols:
+            cur.execute("alter table calendar_events add column if not exists memo text")
+        if "all_day" not in cols:
+            cur.execute("alter table calendar_events add column if not exists all_day int4 not null default 0")
+        if "created_at" not in cols:
+            cur.execute("alter table calendar_events add column if not exists created_at timestamptz not null default now()")
+    except Exception:
+        # sqlite 등 다른 엔진이면 여기로 떨어질 수 있음(현재 Render/Supabase는 Postgres)
+        pass
+
+    # ✅ 혹시 예전 컬럼명이 start/end 라면 값 이관(있을 때만 시도)
+    try:
+        # 컬럼 재조회(ALTER 이후)
+        cur.execute(
+            """
+            select column_name
+            from information_schema.columns
+            where table_schema='public' and table_name='calendar_events'
+            """
+        )
+        cols2 = {r[0] for r in cur.fetchall()}
+
+        if "start_at" in cols2 and "start" in cols2:
+            cur.execute("update calendar_events set start_at = start where start_at is null and start is not null")
+        if "end_at" in cols2 and "end" in cols2:
+            cur.execute("update calendar_events set end_at = end where end_at is null and end is not null")
+        if "start_at" in cols2 and "start_time" in cols2:
+            cur.execute("update calendar_events set start_at = start_time where start_at is null and start_time is not null")
+        if "end_at" in cols2 and "end_time" in cols2:
+            cur.execute("update calendar_events set end_at = end_time where end_at is null and end_time is not null")
+    except Exception:
+        pass
+
 
 
 def _parse_dt(s):
