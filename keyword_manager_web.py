@@ -82,6 +82,12 @@ def _ensure_calendar_schema(cur):
 
         # If no usable legacy column, add 'date'
         cur.execute('alter table calendar_events add column "date" date')
+
+        # extra fields used by UI
+        cur.execute('alter table calendar_events add column if not exists memo text')
+        cur.execute('alter table calendar_events add column if not exists all_day boolean default false')
+        cur.execute('alter table calendar_events add column if not exists start_time text')
+        cur.execute('alter table calendar_events add column if not exists end_time text')
     except Exception as e:
         print("⚠️ calendar_events schema check failed:", repr(e))
 
@@ -176,7 +182,7 @@ def index():
                 with _get_conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
-                            "insert into calendar_events (title, date, start_time, end_time) values (%s, %s, %s, %s)",
+                            "insert into calendar_events (title, date, start_time, end_time, memo, all_day) values (%s, %s, %s, %s, %s, %s)",
                             (title, date, start_time or None, end_time or None),
                         )
                     conn.commit()
@@ -273,6 +279,9 @@ def api_chat_send():
 
     if not _DB_URL or psycopg is None:
         return jsonify({"ok": True})
+    except Exception as e:
+        print('[events POST error]', repr(e))
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
     with _get_conn() as conn:
         with conn.cursor() as cur:
@@ -364,7 +373,7 @@ def api_events():
 
     with _get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("select id, title, date, start_time, end_time from calendar_events order by date asc, start_time asc limit 2000")
+            cur.execute("select id, title, date, start_time, end_time, coalesce(memo,'') as memo, coalesce(all_day,false) as all_day from calendar_events order by date asc, start_time asc limit 2000")
             rows = cur.fetchall()
 
     events = []
@@ -375,6 +384,8 @@ def api_events():
             "date": r[2],
             "start": r[3],
             "end": r[4],
+            "memo": r[5],
+            "allDay": bool(r[6]),
         })
     return jsonify({"ok": True, "events": events})
 
@@ -383,7 +394,16 @@ def api_events():
 def api_events_add():
     data = request.get_json(silent=True) or {}
     title = (data.get("title") or "").strip()
+    memo = (data.get("memo") or "").strip()
+    all_day = bool(data.get("allDay") or data.get("all_day") or False)
+
+    # ✅ 프론트가 {start/end}로 보내는 경우도 지원
     date = (data.get("date") or "").strip()
+    if not date:
+        date = (data.get("start") or "").strip()
+    # FullCalendar는 ISO datetime을 줄 수 있음 → 날짜만
+    if 'T' in date:
+        date = date.split('T', 1)[0]
 
     # ✅ 프론트에서 보내는 형식 통합 지원
     # - 기존: {date: 'YYYY-MM-DD', start: 'HH:MM', end: 'HH:MM'}
@@ -426,8 +446,8 @@ def api_events_add():
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "insert into calendar_events (title, date, start_time, end_time) values (%s, %s, %s, %s)",
-                (title, date, start_time or None, end_time or None),
+                "insert into calendar_events (title, date, start_time, end_time, memo, all_day) values (%s, %s, %s, %s, %s, %s)",
+                (title, date, start_time or None, end_time or None, memo or None, all_day),
             )
         conn.commit()
 
