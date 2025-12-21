@@ -354,8 +354,11 @@ def api_memos_delete():
 # ===============================
 # ✅ Calendar API
 # ===============================
-@app.route("/api/events", methods=["GET"])
+@app.route("/api/events", methods=["GET","POST"])
 def api_events():
+    # ✅ 프론트가 POST /api/events로 저장을 보내는 경우를 지원 (기존 /api/events/add와 동일)
+    if request.method == "POST":
+        return api_events_add()
     if not _DB_URL or psycopg is None:
         return jsonify({"ok": True, "events": []})
 
