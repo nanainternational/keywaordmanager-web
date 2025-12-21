@@ -3,29 +3,13 @@ import re
 import threading
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template, send_from_directory
+from flask_cors import CORS
 
 # ===============================
 # ✅ Flask
 # ===============================
 app = Flask(__name__)
-
-# ===== Flask-Cors safe guard (server must not crash if missing) =====
-try:
-    import importlib
-    CORS = importlib.import_module("flask_cors").CORS
-    CORS(app)
-except Exception as e:
-    CORS = None
-    print("⚠️ Flask-Cors not available:", repr(e))
-# ====================================================================
-
-@app.route("/health", methods=["GET", "HEAD"])
-def health_check():
-    return "ok", 200
-
-@app.route("/favicon.ico", methods=["GET", "HEAD"])
-def favicon():
-    return "", 204
+CORS(app)
 
 # ===============================
 # ✅ Push (Blueprint)
@@ -75,6 +59,32 @@ def _get_conn():
     return psycopg.connect(_DB_URL, connect_timeout=10)
 
 
+def _ensure_calendar_schema(cur):
+    """DB migration for old calendar_events schema.
+    Some deployments have calendar_events without 'date' column (e.g. 'event_date' or 'day').
+    We normalize it to 'date' so the API queries work.
+    """
+    try:
+        cur.execute("""
+            select column_name
+            from information_schema.columns
+            where table_schema = 'public' and table_name = 'calendar_events'
+        """)
+        cols = {r[0] for r in cur.fetchall()}
+        if "date" in cols:
+            return
+
+        # Rename common legacy columns to 'date'
+        for legacy in ("event_date", "day", "dt"):
+            if legacy in cols:
+                cur.execute(f'alter table calendar_events rename column "{legacy}" to "date"')
+                return
+
+        # If no usable legacy column, add 'date'
+        cur.execute('alter table calendar_events add column "date" date')
+    except Exception as e:
+        print("⚠️ calendar_events schema check failed:", repr(e))
+
 def _init_db():
     if not _DB_URL or psycopg is None:
         return
@@ -106,6 +116,8 @@ def _init_db():
                 created_at timestamptz not null default now()
             )
             """)
+            _ensure_calendar_schema(cur)
+            conn.commit()
             cur.execute("""
             create table if not exists presence (
                 id bigserial primary key,
@@ -125,13 +137,12 @@ _init_db()
 # ===============================
 # ✅ Static / Templates
 # ===============================
-@app.route("/", methods=["GET", "POST", "OPTIONS", "HEAD"])
+@app.route("/")
 def index():
-    # Some browsers/extensions (or stray forms) may POST to "/".
-    # We keep the page GET-able, and make POST a no-op so it never 405s.
-    if request.method in ("POST", "OPTIONS"):
-        return "", 204
-    return render_template("index.html")@app.route("/rate")
+    return render_template("index.html")
+
+
+@app.route("/rate")
 def rate_page():
     return render_template("rate.html")
 
