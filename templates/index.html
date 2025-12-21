@@ -15,10 +15,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 
   <title>Keyword Manager Web</title>
-  <!-- PWA -->
-  <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#111827">
-
 
   <!-- FullCalendar -->
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
@@ -1017,103 +1013,6 @@
         setTimeout(() => window.location.reload(), 60);
       });
     }
-  
-    // =========================
-    // ✅ PWA 설치(안드로이드/아이폰)
-    // =========================
-    const _ua = navigator.userAgent || "";
-    const _isAndroid = /Android/i.test(_ua);
-    const _isIOS = /iPhone|iPad|iPod/i.test(_ua);
-    const _isStandalone =
-      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
-      (window.navigator.standalone === true);
-
-    const androidInstallBtn = document.getElementById("androidInstallBtn");
-    const iosHowtoBtn = document.getElementById("iosHowtoBtn");
-    const iosInstallModal = document.getElementById("iosInstallModal");
-    const iosInstallCloseBtn = document.getElementById("iosInstallCloseBtn");
-
-    // iOS: 설치방법 버튼만 노출(설치된 상태면 숨김)
-    if (_isIOS && !_isStandalone && iosHowtoBtn) {
-      iosHowtoBtn.style.display = "inline-block";
-      iosHowtoBtn.addEventListener("click", (e) => {
-        e.preventDefault(); e.stopPropagation();
-        if (iosInstallModal) iosInstallModal.style.display = "flex";
-      });
-    }
-
-    if (iosInstallCloseBtn) {
-      iosInstallCloseBtn.addEventListener("click", (e) => {
-        e.preventDefault(); e.stopPropagation();
-        if (iosInstallModal) iosInstallModal.style.display = "none";
-      });
-    }
-    if (iosInstallModal) {
-      iosInstallModal.addEventListener("click", (e) => {
-        if (e.target === iosInstallModal) iosInstallModal.style.display = "none";
-      });
-    }
-
-    // Android: beforeinstallprompt로 설치 팝업 직접 호출
-    let deferredPrompt = null;
-
-    window.addEventListener("beforeinstallprompt", (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-
-      if (_isAndroid && !_isStandalone && androidInstallBtn) {
-        androidInstallBtn.style.display = "inline-block";
-      }
-    });
-
-    if (androidInstallBtn) {
-      androidInstallBtn.addEventListener("click", async (e) => {
-        e.preventDefault(); e.stopPropagation();
-        if (!deferredPrompt) {
-          alert("아직 설치 조건이 충족되지 않았습니다. (manifest/service-worker 조건 확인 필요)");
-          return;
-        }
-        deferredPrompt.prompt();
-        try { await deferredPrompt.userChoice; } catch (_) {}
-        deferredPrompt = null;
-        androidInstallBtn.style.display = "none";
-      });
-    }
-
-    window.addEventListener("appinstalled", () => {
-      if (androidInstallBtn) androidInstallBtn.style.display = "none";
-    });
-
-  
-    // ✅ Service Worker 등록(루트)
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", async () => {
-        try {
-          await navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
-        } catch (e) {}
-      });
-    }
-
   </script>
-
-  <!-- ✅ iOS 설치 안내 모달 -->
-  <div id="iosInstallModal" class="modal-backdrop" style="display:none;">
-    <div class="modal" style="max-width:520px;">
-      <h4 style="margin:4px 2px 10px; font-size:14px; font-weight:600;">iOS 설치 방법</h4>
-      <div class="hint" style="margin:0 2px 10px;">
-        iOS(Safari)는 설치 팝업이 뜨지 않습니다. 아래 순서로 “홈 화면에 추가”를 해주세요.
-      </div>
-      <div style="font-size:13px; line-height:1.5; padding:0 2px;">
-        1) Safari에서 이 페이지 열기<br>
-        2) 하단(또는 상단) <b>공유</b> 버튼 누르기<br>
-        3) <b>홈 화면에 추가</b> 선택<br>
-        4) 추가된 아이콘으로 실행
-      </div>
-      <div class="actions" style="justify-content:flex-end;">
-        <button id="iosInstallCloseBtn" type="button" class="primary" style="width:auto; padding:10px 14px;">확인</button>
-      </div>
-    </div>
-  </div>
-
 </body>
 </html>
