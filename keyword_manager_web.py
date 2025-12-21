@@ -118,6 +118,68 @@ def ensure_db():
                     """
                 )
 
+
+            # ✅ 기존 테이블 스키마가 과거 버전일 수 있으니, 누락 컬럼은 안전하게 추가(마이그레이션)
+            try:
+                # calendar_events (구버전: start_time/end_time 등으로 존재할 수 있음)
+                cur.execute("alter table calendar_events add column if not exists start_at timestamptz")
+                cur.execute("alter table calendar_events add column if not exists end_at timestamptz")
+                cur.execute("alter table calendar_events add column if not exists memo text")
+                cur.execute("alter table calendar_events add column if not exists all_day boolean default false")
+
+                # 구버전 컬럼명이 있을 때 데이터 이관(있을 때만)
+                cur.execute("""
+                do $$
+                begin
+                    if exists (
+                        select 1 from information_schema.columns
+                        where table_name='calendar_events' and column_name='start_time'
+                    ) then
+                        -- start_at이 비어있으면 start_time을 복사
+                        execute 'update calendar_events set start_at = start_time where start_at is null and start_time is not null';
+                    end if;
+
+                    if exists (
+                        select 1 from information_schema.columns
+                        where table_name='calendar_events' and column_name='end_time'
+                    ) then
+                        execute 'update calendar_events set end_at = end_time where end_at is null and end_time is not null';
+                    end if;
+                end $$;
+                """)
+
+                # push_subscriptions (구버전: subscription 컬럼이 없을 수 있음)
+                cur.execute("alter table push_subscriptions add column if not exists subscription jsonb")
+                cur.execute("alter table push_subscriptions add column if not exists client_id text")
+                cur.execute("alter table push_subscriptions add column if not exists platform text")
+
+                # 구버전(p256dh/auth) → subscription JSON으로 이관(있을 때만)
+                cur.execute("""
+                do $$
+                begin
+                    if exists (
+                        select 1 from information_schema.columns
+                        where table_name='push_subscriptions' and column_name='p256dh'
+                    )
+                    and exists (
+                        select 1 from information_schema.columns
+                        where table_name='push_subscriptions' and column_name='auth'
+                    ) then
+                        execute $q$
+                            update push_subscriptions
+                            set subscription = jsonb_build_object(
+                                'keys', jsonb_build_object('p256dh', p256dh, 'auth', auth)
+                            )
+                            where subscription is null
+                              and (p256dh is not null or auth is not null)
+                        $q$;
+                    end if;
+                end $$;
+                """)
+            except Exception as _e:
+                # 마이그레이션 실패하더라도 서비스는 뜨게 둠(로그로 확인)
+                print("ensure_db migration warning:", _e)
+
             conn.commit()
 
         _DB_READY = True
@@ -161,23 +223,25 @@ def _dt_to_fullcalendar(dt, is_all_day):
 
 
 # ===============================
-# ✅ PWA (manifest / service worker) - ROOT SERVING FIX
+# ✅ PWA (manifest / service worker)
 # ===============================
-from flask import make_response
-
 @app.route("/service-worker.js")
 def service_worker():
-    resp = make_response(send_from_directory(".", "service-worker.js"))
-    resp.headers["Content-Type"] = "application/javascript; charset=utf-8"
-    resp.headers["Cache-Control"] = "no-store, max-age=0"
-    return resp
+    return send_from_directory(
+        "static",
+        "service-worker.js",
+        mimetype="application/javascript",
+        max_age=0
+    )
 
 @app.route("/manifest.webmanifest")
 def webmanifest():
-    resp = make_response(send_from_directory(".", "manifest.webmanifest"))
-    resp.headers["Content-Type"] = "application/manifest+json; charset=utf-8"
-    resp.headers["Cache-Control"] = "no-store, max-age=0"
-    return resp
+    return send_from_directory(
+        "static",
+        "manifest.webmanifest",
+        mimetype="application/manifest+json",
+        max_age=0
+    )
 
 
 # ===============================
