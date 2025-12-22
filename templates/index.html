@@ -761,7 +761,7 @@ async function jdel(url){
           const el = document.createElement("div");
           el.className = "presence-avatar " + (online ? "online" : "offline");
           el.textContent = (u.name || "익명").charAt(0);
-          el.setAttribute("data-label", `${u.name} · ${state}`);
+          el.textContent = (u.name || "익명").slice(0, 2);
 
           const t = document.createElement("div");
           t.className = "presence-time";
