@@ -1,72 +1,107 @@
-/* static/pwa-push.js */
-
-async function registerSW() {
-  if (!("serviceWorker" in navigator)) return null;
-  try {
-    const reg = await navigator.serviceWorker.register("/service-worker.js");
-    return reg;
-  } catch (e) {
-    console.error("SW register failed:", e);
-    return null;
-  }
-}
+// static/pwa-push.js
 
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(base64);
-  const out = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; ++i) out[i] = raw.charCodeAt(i);
-  return out;
+  const rawData = atob(base64);
+  return new Uint8Array([...rawData].map((c) => c.charCodeAt(0)));
 }
 
-async function subscribePush(reg) {
-  // 서버에서 내려주는 공개키를 window.VAPID_PUBLIC_KEY로 주입하는 구조면 그대로 사용
-  const vapidPublicKey = window.VAPID_PUBLIC_KEY || "";
-  if (!vapidPublicKey) throw new Error("VAPID public key missing (window.VAPID_PUBLIC_KEY)");
-
-  const subObj = await reg.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-  });
-
-  return subObj.toJSON ? subObj.toJSON() : subObj;
+async function registerSW() {
+  if (!("serviceWorker" in navigator)) throw new Error("Service Worker not supported");
+  const reg = await navigator.serviceWorker.register("/service-worker.js");
+  return reg;
 }
 
-async function saveSubscription(sub, platform, clientId) {
-  const payload = { client_id: clientId || "", platform: platform || "", subscription: sub };
+async function getVapidPublicKey() {
+  const r = await fetch("/api/push/vapidPublicKey");
+  const j = await r.json();
+  if (!j || !j.publicKey) throw new Error("VAPID public key missing");
+  return j.publicKey;
+}
 
+async function saveSubscriptionToServer(sub) {
   const res = await fetch("/api/push/subscribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ subscription: sub }),
   });
-
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok || !j.ok) throw new Error(j.error || "subscribe_failed");
-  return j;
+  const text = await res.text();
+  if (!res.ok) throw new Error(`subscribe failed: ${res.status} ${text}`);
+  return text;
 }
 
-function guessPlatform() {
-  const ua = (navigator.userAgent || "").toLowerCase();
-  if (ua.includes("android")) return "android";
-  if (ua.includes("iphone") || ua.includes("ipad") || ua.includes("ipod")) return "ios";
-  return "desktop";
-}
+window.pwaEnableNotifications = async function pwaEnableNotifications() {
+  try {
+    console.log("[PWA] enable clicked. perm(before) =", Notification.permission);
 
-// ✅ index.html에서 종(🔔) 버튼이 이걸 호출하게 만들면 됨.
-window.enablePush = async function enablePush(options) {
-  const clientId = options && options.clientId ? String(options.clientId) : "";
-  const platform = options && options.platform ? String(options.platform) : guessPlatform();
+    const perm = await Notification.requestPermission();
+    console.log("[PWA] perm(after) =", perm);
+    if (perm !== "granted") {
+      alert("알림 권한이 허용되지 않았습니다. 브라우저 설정에서 알림을 허용해주세요.");
+      return;
+    }
 
-  const perm = await Notification.requestPermission();
-  if (perm !== "granted") throw new Error("permission_denied");
+    const reg = await navigator.serviceWorker.ready;
 
-  const reg = await registerSW();
-  if (!reg) throw new Error("sw_not_supported");
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      const vapidKey = await getVapidPublicKey();
+      const appServerKey = urlBase64ToUint8Array(vapidKey);
 
-  const sub = await subscribePush(reg);
-  await saveSubscription(sub, platform, clientId);
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: appServerKey,
+      });
+      console.log("[PWA] new subscription created");
+    } else {
+      console.log("[PWA] existing subscription found");
+    }
 
-  return { ok: true };
+    const saved = await saveSubscriptionToServer(sub);
+    console.log("[PWA] subscription saved:", saved);
+
+    alert("✅ 알림이 켜졌습니다!");
+  } catch (e) {
+    console.error("[PWA] enable error:", e);
+    alert("❌ 알림 켜기 실패: " + (e && e.message ? e.message : e));
+  }
 };
+
+window.pwaTestPush = async function pwaTestPush() {
+  try {
+    console.log("[PWA] test clicked");
+
+    const res = await fetch("/api/push/send-test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "푸시 테스트",
+        body: "정상적으로 도착했습니다.",
+        url: "/",
+      }),
+    });
+
+    const text = await res.text();
+    console.log("[PWA] send-test:", res.status, text);
+
+    if (!res.ok) {
+      alert("❌ 푸시 테스트 실패: " + res.status);
+      return;
+    }
+
+    alert("✅ 푸시 발사 요청 완료! (알림이 뜨는지 확인)");
+  } catch (e) {
+    console.error("[PWA] test error:", e);
+    alert("❌ 푸시 테스트 오류: " + (e && e.message ? e.message : e));
+  }
+};
+
+(async () => {
+  try {
+    await registerSW();
+    console.log("[PWA] SW registered");
+  } catch (e) {
+    console.error("[PWA] SW register failed:", e);
+  }
+})();
