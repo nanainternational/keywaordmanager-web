@@ -368,7 +368,7 @@ def api_events():
 
     with _get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("select id, title, date, start_time, end_time, coalesce(memo,'') as memo, coalesce(all_day,false) as all_day from calendar_events order by date asc, start_time asc limit 2000")
+            cur.execute("select id, title, coalesce(date, (start_time at time zone 'UTC')::date) as date, start_time, end_time, coalesce(memo,'') as memo, (coalesce(all_day,0) <> 0) as all_day from calendar_events order by coalesce(date, (start_time at time zone 'UTC')::date) asc, start_time asc limit 2000")
             rows = cur.fetchall()
 
     events = []
@@ -376,10 +376,10 @@ def api_events():
         events.append({
             "id": r[0],
             "title": r[1],
-            "date": r[2],
-            "start": r[3],
-            "end": r[4],
-            "memo": r[5],
+            "date": (r[2].isoformat() if r[2] else None),
+            "start": (r[3].isoformat() if r[3] else (r[2].isoformat() if r[2] else None)),
+            "end": (r[4].isoformat() if r[4] else None),
+            "memo": r[5] or "",
             "allDay": bool(r[6]),
         })
     return jsonify({"ok": True, "events": events})
@@ -388,21 +388,19 @@ def api_events():
 @app.route("/api/events/add", methods=["POST"])
 def api_events_add():
     data = request.get_json(silent=True) or {}
+
     title = (data.get("title") or "").strip()
     memo = (data.get("memo") or "").strip()
-    all_day = bool(data.get("allDay") or data.get("all_day") or False)
 
-    # ✅ 프론트가 {start/end}로 보내는 경우도 지원
+    # Supabase 테이블 all_day가 int4(0/1)라서 일단 int로 저장
+    all_day_bool = bool(data.get("allDay") or data.get("all_day") or False)
+    all_day = 1 if all_day_bool else 0
+
+    # ✅ 프론트가 {start/end} 또는 {date/start/end}로 보내는 경우 모두 지원
     date = (data.get("date") or "").strip()
-    if not date:
-        date = (data.get("start") or "").strip()
-    # FullCalendar는 ISO datetime을 줄 수 있음 → 날짜만
-    if 'T' in date:
-        date = date.split('T', 1)[0]
+    start_raw = (data.get("start") or "").strip()
+    end_raw = (data.get("end") or "").strip()
 
-    # ✅ 프론트에서 보내는 형식 통합 지원
-    # - 기존: {date: 'YYYY-MM-DD', start: 'HH:MM', end: 'HH:MM'}
-    # - 현재 UI/FullCalendar: {start: 'YYYY-MM-DD' or ISO, end: 'YYYY-MM-DD' or ISO}
     def _split_dt(v: str):
         v = (v or "").strip()
         if not v:
@@ -411,29 +409,44 @@ def api_events_add():
         if "T" in v:
             d, t = v.split("T", 1)
             t = t.split("+", 1)[0].split("Z", 1)[0]
-            t = t[:5]  # HH:MM
+            t = (t[:5] if len(t) >= 5 else "")
             return d.strip(), t.strip()
         # YYYY-MM-DD만 오면 날짜로 취급
         if len(v) >= 10 and v[4] == "-" and v[7] == "-":
             return v[:10], ""
         # HH:MM만 오면 시각으로 취급
-        return "", v
+        if len(v) >= 4 and v[2] == ":":
+            return "", v[:5]
+        return "", ""
 
-    start_raw = (data.get("start") or "").strip()
-    end_raw = (data.get("end") or "").strip()
+    s_date, s_hm = _split_dt(start_raw)
+    e_date, e_hm = _split_dt(end_raw)
 
-    d1, t1 = _split_dt(start_raw)
-    d2, t2 = _split_dt(end_raw)
+    # 과거 포맷: start/end가 HH:MM만 오는 경우
+    if not s_date and s_hm and date:
+        s_date = date
+    if not e_date and e_hm and date:
+        e_date = date
 
+    # date가 비어있으면 start의 날짜를 date로 사용
     if not date:
-        # date가 없으면 start에서 날짜를 뽑아 사용
-        date = d1 or d2
+        date = s_date
 
-    start_time = t1
-    end_time = t2
-
+    # 최소값 체크
     if not title or not date:
         return jsonify({"ok": False, "error": "missing title/date"}), 400
+
+    # timestamptz 컬럼에 넣을 ISO 문자열 생성 (시간이 없으면 None)
+    # ※ Render/Supabase 환경의 TZ 혼선 방지를 위해 +09:00 고정
+    def _to_ts(d: str, hm: str):
+        if not d:
+            return None
+        if not hm:
+            return None
+        return f"{d}T{hm}:00+09:00"
+
+    start_time = _to_ts(s_date or date, s_hm)
+    end_time = _to_ts(e_date or s_date or date, e_hm)
 
     if not _DB_URL or psycopg is None:
         return jsonify({"ok": True})
@@ -441,8 +454,9 @@ def api_events_add():
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "insert into calendar_events (title, date, start_time, end_time, memo, all_day) values (%s, %s, %s, %s, %s, %s)",
-                (title, date, start_time or None, end_time or None, memo or None, all_day),
+                "insert into calendar_events (title, date, start_time, end_time, memo, all_day) "
+                "values (%s, %s, %s, %s, %s, %s)",
+                (title, date, start_time, end_time, (memo or None), all_day),
             )
         conn.commit()
 
