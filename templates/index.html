@@ -15,63 +15,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 
   <title>Keyword Manager Web</title>
-  <!-- PWA -->
-  <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#111827">
-
 
   <!-- FullCalendar -->
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js">
-// =========================
-// ✅ 메모 API 연동 (FIX)
-// =========================
-async function loadMemos(){
-  try{
-    const res = await fetch("/api/memos");
-    const data = await res.json();
-    const list = data.memos || [];
-    const box = document.getElementById("memoList");
-    if(!box) return;
-    box.innerHTML = "";
-    list.forEach(m=>{
-      const div = document.createElement("div");
-      div.className = "chip";
-      div.innerHTML = `<span>${(m.text||m.content||"")}</span>`;
-      box.appendChild(div);
-    });
-  }catch(e){ console.error(e); }
-}
-
-async function addMemo(text){
-  const res = await fetch("/api/memos/add",{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ text })
-  });
-  return res.ok;
-}
-
-document.addEventListener("DOMContentLoaded", ()=>{
-  loadMemos();
-  const btn = document.getElementById("memoAddBtn");
-  const input = document.getElementById("memoInput");
-  if(btn){
-    btn.addEventListener("click", async ()=>{
-      const text = (input.value||"").trim();
-      if(!text) return;
-      const ok = await addMemo(text);
-      if(ok){
-        input.value = "";
-        loadMemos();
-      }else{
-        alert("메모 저장 실패");
-      }
-    });
-  }
-});
-
-</script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
   <style>
     :root {
@@ -488,7 +435,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
       <div class="section-title">
         <h3>채팅</h3>
         <div style="display:flex; gap:8px; align-items:center;">
-<button class="mini" type="button" onclick="pwaEnableNotifications((document.getElementById('chatSender')?.value||'익명').trim()||'익명')">알림 켜기</button>
+          <button class="mini" type="button" onclick="pwaEnableNotifications((document.getElementById('chatSender')?.value||'익명').trim()||'익명')">알림 켜기</button>
           <button class="mini" type="button" onclick="pwaTestPush((document.getElementById('chatSender')?.value||'익명').trim()||'익명')">푸시 테스트</button>
         </div>
       </div>
@@ -514,12 +461,12 @@ document.addEventListener("DOMContentLoaded", ()=>{
         <button class="mini icon-btn" id="refreshMemosBtn" type="button" aria-label="새로고침"><span class="refresh-icon" aria-hidden="true">⟳</span></button>
       </div>
 
-      <form class="memo-row" id="memoForm">
-        <input type="text" id="memoInput" placeholder="메모 추가..." autocomplete="off" inputmode="text">
-        <button class="primary" type="button" id="memoAddBtn">추가</button>
+      <form method="POST" class="memo-row">
+        <input type="text" name="memo_keyword" placeholder="메모 추가..." autocomplete="off" inputmode="text">
+        <button class="primary" type="submit" name="action" value="add_memo">추가</button>
       </form>
 
-      <div class="memo-list" id="memoList">
+      <div class="memo-list">
         {% for m in memo_list %}
           <div class="chip">
             <span>{{ m }}</span>
@@ -575,56 +522,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
     </div>
   </div>
 
-  <script src="/static/pwa-push.js">
-// =========================
-// ✅ 메모 API 연동 (FIX)
-// =========================
-async function loadMemos(){
-  try{
-    const res = await fetch("/api/memos");
-    const data = await res.json();
-    const list = data.memos || [];
-    const box = document.getElementById("memoList");
-    if(!box) return;
-    box.innerHTML = "";
-    list.forEach(m=>{
-      const div = document.createElement("div");
-      div.className = "chip";
-      div.innerHTML = `<span>${(m.text||m.content||"")}</span>`;
-      box.appendChild(div);
-    });
-  }catch(e){ console.error(e); }
-}
-
-async function addMemo(text){
-  const res = await fetch("/api/memos/add",{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ text })
-  });
-  return res.ok;
-}
-
-document.addEventListener("DOMContentLoaded", ()=>{
-  loadMemos();
-  const btn = document.getElementById("memoAddBtn");
-  const input = document.getElementById("memoInput");
-  if(btn){
-    btn.addEventListener("click", async ()=>{
-      const text = (input.value||"").trim();
-      if(!text) return;
-      const ok = await addMemo(text);
-      if(ok){
-        input.value = "";
-        loadMemos();
-      }else{
-        alert("메모 저장 실패");
-      }
-    });
-  }
-});
-
-</script>
+  <script src="/static/pwa-push.js"></script>
 
   <script>
     // =========================
@@ -988,17 +886,13 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
       try {
         if (currentEventId) {
-          // ✅ 백엔드가 PUT(/api/events/{id})를 지원하지 않아서: 삭제 후 재등록 방식
-          await jpost("/api/events/delete", { id: currentEventId });
-          await jpost("/api/events", { title, start, end: end || null, allDay: false, memo });
+          await jput(`/api/events/${currentEventId}`, { title, start, end: end || null, memo });
         } else {
           await jpost("/api/events", { title, start, end: end || null, allDay: false, memo });
         }
         closeModal();
         calendar.refetchEvents();
       } catch (e2) {
-        console.error(e2);
-        alert("요청이 실패했습니다. (콘솔/Network 확인)");
       } finally {
         evSave.disabled = false;
       }
@@ -1014,12 +908,10 @@ document.addEventListener("DOMContentLoaded", ()=>{
       evDelete.disabled = true;
 
       try {
-        await jpost("/api/events/delete", { id: currentEventId });
+        await jdel(`/api/events/${currentEventId}`);
         closeModal();
         calendar.refetchEvents();
       } catch (e2) {
-        console.error(e2);
-        alert("요청이 실패했습니다. (콘솔/Network 확인)");
       } finally {
         evDelete.disabled = false;
       }
@@ -1044,7 +936,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
         events: async (info, success, failure) => {
           try {
             const data = await jget("/api/events");
-            success((data && data.events) ? data.events : []);
+            success(data || []);
           } catch (e) {
             failure(e);
           }
@@ -1121,71 +1013,6 @@ document.addEventListener("DOMContentLoaded", ()=>{
         setTimeout(() => window.location.reload(), 60);
       });
     }
-  
-    // ✅ Service Worker 등록(루트)
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", async () => {
-        try {
-          await navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
-        } catch (e) {}
-      });
-    }
-
-  
-
-
-  
-// =========================
-// ✅ 메모 API 연동 (FIX)
-// =========================
-async function loadMemos(){
-  try{
-    const res = await fetch("/api/memos");
-    const data = await res.json();
-    const list = data.memos || [];
-    const box = document.getElementById("memoList");
-    if(!box) return;
-    box.innerHTML = "";
-    list.forEach(m=>{
-      const div = document.createElement("div");
-      div.className = "chip";
-      div.innerHTML = `<span>${(m.text||m.content||"")}</span>`;
-      box.appendChild(div);
-    });
-  }catch(e){ console.error(e); }
-}
-
-async function addMemo(text){
-  const res = await fetch("/api/memos/add",{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ text })
-  });
-  return res.ok;
-}
-
-document.addEventListener("DOMContentLoaded", ()=>{
-  loadMemos();
-  const btn = document.getElementById("memoAddBtn");
-  const input = document.getElementById("memoInput");
-  if(btn){
-    btn.addEventListener("click", async ()=>{
-      const text = (input.value||"").trim();
-      if(!text) return;
-      const ok = await addMemo(text);
-      if(ok){
-        input.value = "";
-        loadMemos();
-      }else{
-        alert("메모 저장 실패");
-      }
-    });
-  }
-});
-
-</script>
-
-  
-
+  </script>
 </body>
 </html>
