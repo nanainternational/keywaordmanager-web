@@ -1,26 +1,26 @@
 import os
 import re
 import threading
-from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, render_template, send_from_directory
-from flask_cors import CORS
+from datetime import datetime
 
-# ===============================
-# ✅ Flask
-# ===============================
+import requests
+from bs4 import BeautifulSoup
+from flask import Flask, request, jsonify, render_template
+
+# ✅ psycopg (v3) 사용: Python 3.13에서 psycopg2 바이너리 호환 이슈 회피
+import psycopg
+
 app = Flask(__name__)
-CORS(app)
 
 # ===============================
-# ✅ Push (Blueprint)
+# ✅ PWA Push (Web Push)
 # ===============================
 try:
-    from push_routes import push_bp, send_push  # noqa: F401
-    app.register_blueprint(push_bp)
-except Exception as _e:
-    # push_routes.py가 없거나(또는 의존성 미설치)일 때도 기존 앱은 동작하게 둠
-    push_bp = None
-    send_push = None
+    from push_routes import push_bp, notify_all
+except ImportError:
+    from push_routes import push_bp
+    notify_all = None
+app.register_blueprint(push_bp)
 
 
 # ===============================
@@ -35,519 +35,539 @@ except Exception:
 # ===============================
 # ✅ DB
 # ===============================
-_DB_URL = (os.environ.get("DATABASE_URL") or "").strip()
+_DB_READY = False
+_DB_LOCK = threading.Lock()
 
 def _now():
     if TZ:
         return datetime.now(TZ)
     return datetime.now()
 
-# ===============================
-# ✅ psycopg (optional)
-# ===============================
-try:
-    import psycopg
-except Exception:
-    psycopg = None
-
-
-def _get_conn():
-    if not _DB_URL:
+def get_conn():
+    db_url = (os.environ.get("DATABASE_URL") or "").strip()
+    if not db_url:
         raise RuntimeError("DATABASE_URL not set")
-    if psycopg is None:
-        raise RuntimeError("psycopg not installed")
-    return psycopg.connect(_DB_URL, connect_timeout=10)
+    # psycopg v3
+    return psycopg.connect(db_url, connect_timeout=10)
 
-
-def _ensure_calendar_schema(cur):
-    """DB migration for old calendar_events schema.
-    Some deployments have calendar_events without 'date' column (e.g. 'event_date' or 'day').
-    We normalize it to 'date' so the API queries work.
-    """
-    try:
-        cur.execute("""
-            select column_name
-            from information_schema.columns
-            where table_schema = 'public' and table_name = 'calendar_events'
-        """)
-        cols = {r[0] for r in cur.fetchall()}
-        if "date" in cols:
-            return
-
-        # Rename common legacy columns to 'date'
-        for legacy in ("event_date", "day", "dt"):
-            if legacy in cols:
-                cur.execute(f'alter table calendar_events rename column "{legacy}" to "date"')
-                return
-
-        # If no usable legacy column, add 'date'
-        cur.execute('alter table calendar_events add column "date" date')
-
-        # extra fields used by UI
-        cur.execute('alter table calendar_events add column if not exists memo text')
-        cur.execute('alter table calendar_events add column if not exists all_day int4 not null default 0')
-        cur.execute('alter table calendar_events add column if not exists start_time timestamptz')
-        cur.execute('alter table calendar_events add column if not exists end_time timestamptz')
-    except Exception as e:
-        print("⚠️ calendar_events schema check failed:", repr(e))
-
-def _init_db():
-    if not _DB_URL or psycopg is None:
+def ensure_db():
+    global _DB_READY
+    if _DB_READY:
         return
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-            create table if not exists chat_messages (
-                id bigserial primary key,
-                room text not null,
-                sender text not null,
-                message text not null,
-                created_at timestamptz not null default now()
-            )
-            """)
-            cur.execute("""
-            create table if not exists memos (
-                id bigserial primary key,
-                content text not null,
-                created_at timestamptz not null default now()
-            )
-            """)
-            cur.execute("""
-            create table if not exists calendar_events (
-                id bigserial primary key,
-                title text not null,
-                date date not null,
-                start_time timestamptz,
-                end_time timestamptz,
-                created_at timestamptz not null default now(),
-                all_day int4 not null default 0,
-                memo text
-            )
-            """)
-            _ensure_calendar_schema(cur)
+    with _DB_LOCK:
+        if _DB_READY:
+            return
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                # memos
+                cur.execute(
+                    """
+                    create table if not exists memos(
+                        id bigserial primary key,
+                        content text unique,
+                        created_at timestamptz not null default now()
+                    )
+                    """
+                )
+
+                # chat_messages
+                cur.execute(
+                    """
+                    create table if not exists chat_messages(
+                        id bigserial primary key,
+                        room text not null default 'main',
+                        sender text,
+                        message text,
+                        created_at timestamptz not null default now()
+                    )
+                    """
+                )
+                # ✅ client_id 컬럼이 없으면 추가 (내/남 구분)
+                cur.execute(
+                    """
+                    select 1
+                    from information_schema.columns
+                    where table_schema='public' and table_name='chat_messages' and column_name='client_id'
+                    """
+                )
+                if cur.fetchone() is None:
+                    cur.execute("alter table chat_messages add column client_id text")
+
+                # calendar_events
+                cur.execute(
+                    """
+                    create table if not exists calendar_events(
+                        id bigserial primary key,
+                        title text,
+                        start_time timestamptz,
+                        end_time timestamptz,
+                        all_day int4 not null default 0,
+                        memo text,
+                        created_at timestamptz not null default now()
+                    )
+                    """
+                )
+
+                # ✅ presence (최근 접속자)
+                cur.execute(
+                    """
+                    create table if not exists presence(
+                        client_id text primary key,
+                        sender text,
+                        animal text,
+                        last_seen timestamptz not null default now(),
+                        user_agent text
+                    )
+                    """
+                )
+                # 기존 테이블 호환: 컬럼 누락 시 추가
+                cur.execute("alter table presence add column if not exists sender text")
+                cur.execute("alter table presence add column if not exists animal text")
+                cur.execute("alter table presence add column if not exists last_seen timestamptz not null default now()")
+                cur.execute("alter table presence add column if not exists user_agent text")
+
             conn.commit()
-            cur.execute("""
-            create table if not exists presence (
-                id bigserial primary key,
-                client_id text unique not null,
-                sender text,
-                animal text,
-                last_seen timestamptz not null default now()
-            )
-            """)
-            # ensure add column if not exists last_seen timestamptz not null default now()
-        conn.commit()
+        _DB_READY = True
+def _ensure_calendar_events_columns(cur):
+    cur.execute("select column_name from information_schema.columns where table_schema='public' and table_name='calendar_events'")
+    cols = {r[0] for r in cur.fetchall()}
+    if "memo" not in cols:
+        cur.execute("alter table calendar_events add column memo text")
+    if "created_at" not in cols:
+        cur.execute("alter table calendar_events add column created_at timestamptz not null default now()")
+    if "all_day" not in cols:
+        cur.execute("alter table calendar_events add column all_day int4 not null default 0")
 
-
-_init_db()
-
-
-# ===============================
-# ✅ Static / Templates
-# ===============================
-@app.route("/", methods=["GET", "POST"])
-def index():
-    # 기존 index.html은 form POST를 "/"로 보내는 구조가 있어 405가 발생할 수 있음.
-    # POST(action)를 서버에서 처리한 뒤 다시 "/"로 돌아오게 처리한다.
-    if request.method == "POST":
-        action = (request.form.get("action") or "").strip()
-
-        # ✅ 메모 추가
-        if action == "add_memo":
-            text = (request.form.get("memo_text") or request.form.get("text") or "").strip()
-            if text and _DB_URL and psycopg is not None:
-                with _get_conn() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("insert into memos (content) values (%s)", (text,))
-                    conn.commit()
-
-        # ✅ 메모 삭제
-        elif action == "delete_memo":
-            memo_id = (request.form.get("memo_id") or request.form.get("id") or "").strip()
-            try:
-                memo_id_i = int(memo_id)
-            except Exception:
-                memo_id_i = None
-            if memo_id_i and _DB_URL and psycopg is not None:
-                with _get_conn() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("delete from memos where id=%s", (memo_id_i,))
-                    conn.commit()
-
-        # ✅ 일정 추가
-        elif action == "add_event":
-            title = (request.form.get("title") or "").strip()
-            date = (request.form.get("date") or "").strip()
-            start_time = (request.form.get("start") or request.form.get("start_time") or "").strip()
-            end_time = (request.form.get("end") or request.form.get("end_time") or "").strip()
-            if title and date and _DB_URL and psycopg is not None:
-                with _get_conn() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "insert into calendar_events (title, date, start_time, end_time, memo, all_day) values (%s, %s, %s, %s, %s, %s)",
-                            (title, date, start_time or None, end_time or None, None, 0),
-                        )
-                    conn.commit()
-
-        # ✅ 일정 삭제
-        elif action == "delete_event":
-            event_id = (request.form.get("event_id") or request.form.get("id") or "").strip()
-            try:
-                event_id_i = int(event_id)
-            except Exception:
-                event_id_i = None
-            if event_id_i and _DB_URL and psycopg is not None:
-                with _get_conn() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("delete from calendar_events where id=%s", (event_id_i,))
-                    conn.commit()
-
-        # POST 처리 후 새로고침(중복전송 방지)
-        from flask import redirect
-        return redirect("/")
-
-    return render_template("index.html")
-@app.route("/rate")
-def rate_page():
-    return render_template("rate.html")
-
-
-# ===============================
-# ✅ PWA (manifest / service worker)
-# ===============================
-@app.route("/service-worker.js")
-def service_worker():
-    return send_from_directory(
-        ".",
-        "service-worker.js",
-        mimetype="application/javascript",
-        max_age=0
-    )
-
-
-@app.route("/manifest.webmanifest")
-def webmanifest():
-    return send_from_directory(
-        ".",
-        "manifest.webmanifest",
-        mimetype="application/manifest+json",
-        max_age=0
-    )
-
-
-# ===============================
-# ✅ Chat API
-# ===============================
-@app.route("/api/chat/messages", methods=["GET"])
-def api_chat_messages():
-    room = request.args.get("room", "main")
-    after_id = request.args.get("after_id", "0")
+def _parse_dt(s):
+    if not s:
+        return None
     try:
-        after_id = int(after_id)
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
     except Exception:
-        after_id = 0
+        return None
 
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True, "messages": []})
+def _dt_to_fullcalendar(dt, is_all_day):
+    if not dt:
+        return None
+    try:
+        if is_all_day:
+            return dt.strftime("%Y-%m-%d")
+        return dt.strftime("%Y-%m-%dT%H:%M")
+    except Exception:
+        return None
 
-    with _get_conn() as conn:
+# ===============================
+# ✅ 환율 (시티은행)
+# ===============================
+_cached_rate = {"value": None, "date": None}
+
+def get_adjusted_exchange_rate():
+    today = datetime.now().strftime("%Y-%m-%d")
+    if _cached_rate["value"] is not None and _cached_rate["date"] == today:
+        return _cached_rate["value"]
+
+    try:
+        url = "https://www.citibank.co.kr/FxdExrt0100.act"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=6)
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        for li in soup.select("ul.exchangeList > li"):
+            label = li.select_one("span.flagCn")
+            value = li.select_one("span.green")
+            if label and value and "중국" in label.get_text(strip=True):
+                base = float(value.get_text(strip=True).replace(",", ""))
+                adjusted = round((base + 2) * 1.1, 2)
+                _cached_rate["value"] = adjusted
+                _cached_rate["date"] = today
+                return adjusted
+    except Exception as e:
+        print("환율 오류:", e)
+
+    return _cached_rate["value"]
+
+# ===============================
+# ✅ Health (UptimeRobot)
+# ===============================
+@app.route("/health", methods=["GET", "HEAD"])
+def health():
+    return ("", 200)
+
+# ===============================
+# ✅ 메인 페이지
+# ===============================
+@app.route("/", methods=["GET", "POST", "HEAD"])
+def index():
+    if request.method == "HEAD":
+        return ("", 200)
+
+    ensure_db()
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        memo_keyword = (request.form.get("memo_keyword") or "").strip()
+
+        if action == "add_memo" and memo_keyword:
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("insert into memos (content) values (%s) on conflict do nothing", (memo_keyword,))
+                conn.commit()
+
+        if action == "delete_memo" and memo_keyword:
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("delete from memos where content=%s", (memo_keyword,))
+                conn.commit()
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # ✅ 최신 메모가 위로
+            cur.execute("select content from memos order by id desc")
+            memo_list = [r[0] for r in cur.fetchall()]
+
+    return render_template(
+        "index.html",
+        memo_list=memo_list,
+        exchange_rate=get_adjusted_exchange_rate(),
+    )
+
+# ===============================
+# ✅ 메모 API
+# ===============================
+@app.route("/api/memos", methods=["GET"])
+def api_get_memos():
+    ensure_db()
+    after_id = request.args.get("after_id")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if after_id and str(after_id).isdigit():
+                cur.execute(
+                    "select id, content, created_at from memos where id > %s order by id asc",
+                    (int(after_id),),
+                )
+            else:
+                cur.execute("select id, content, created_at from memos order by id asc")
+            rows = cur.fetchall()
+
+    out = [{"id": r[0], "content": r[1], "created_at": r[2].isoformat() if r[2] else None} for r in rows]
+    return jsonify(out)
+
+@app.route("/api/memos", methods=["POST"])
+def api_create_memo():
+    ensure_db()
+    data = request.get_json(silent=True) or {}
+    content = (data.get("content") or "").strip()
+    if not content:
+        return jsonify({"ok": False, "error": "empty"}), 400
+
+    now = _now()
+    with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "select id, room, sender, message, created_at from chat_messages where room=%s and id>%s order by id asc limit 200",
+                "insert into memos (content, created_at) values (%s, %s) on conflict do nothing returning id",
+                (content, now),
+            )
+            row = cur.fetchone()
+        conn.commit()
+
+    return jsonify({"ok": True, "id": row[0] if row else None})
+
+@app.route("/api/memos/<int:memo_id>", methods=["DELETE"])
+def api_delete_memo(memo_id):
+    ensure_db()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("delete from memos where id=%s", (memo_id,))
+        conn.commit()
+    return jsonify({"ok": True})
+
+# ===============================
+# ✅ 캘린더 API
+# ===============================
+@app.route("/api/events", methods=["GET"])
+def get_events():
+    ensure_db()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _ensure_calendar_events_columns(cur)
+            cur.execute(
+                """
+                select id, title, start_time, end_time, all_day, memo
+                from calendar_events
+                order by id asc
+                """
+            )
+            rows = cur.fetchall()
+
+    out = []
+    for (eid, title, st, et, all_day, memo) in rows:
+        out.append(
+            {
+                "id": eid,
+                "title": title or "",
+                "start": _dt_to_fullcalendar(st, bool(all_day)),
+                "end": _dt_to_fullcalendar(et, bool(all_day)) if et else None,
+                "allDay": bool(all_day),
+                "memo": memo or "",
+            }
+        )
+    return jsonify(out)
+
+@app.route("/api/events", methods=["POST"])
+def create_event():
+    ensure_db()
+    data = request.get_json(silent=True) or {}
+
+    title = (data.get("title") or "").strip()
+    st = _parse_dt(data.get("start"))
+    et = _parse_dt(data.get("end")) if data.get("end") else None
+    all_day = 1 if data.get("allDay") else 0
+    memo = data.get("memo") or ""
+
+    if not title or not st:
+        return jsonify({"ok": False, "error": "title/start required"}), 400
+
+    now = _now()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _ensure_calendar_events_columns(cur)
+            cur.execute(
+                """
+                insert into calendar_events (title, start_time, end_time, all_day, memo, created_at)
+                values (%s, %s, %s, %s, %s, %s)
+                returning id
+                """,
+                (title, st, et, all_day, memo, now),
+            )
+            event_id = cur.fetchone()[0]
+        conn.commit()
+
+    return jsonify({"ok": True, "id": event_id})
+
+@app.route("/api/events/<int:event_id>", methods=["PUT"])
+def update_event(event_id):
+    ensure_db()
+    data = request.get_json(silent=True) or {}
+
+    fields = []
+    values = []
+
+    if "title" in data:
+        fields.append("title=%s")
+        values.append((data.get("title") or "").strip())
+
+    if "start" in data:
+        fields.append("start_time=%s")
+        values.append(_parse_dt(data.get("start")))
+
+    if "end" in data:
+        fields.append("end_time=%s")
+        values.append(_parse_dt(data.get("end")) if data.get("end") else None)
+
+    if "allDay" in data:
+        fields.append("all_day=%s")
+        values.append(1 if data.get("allDay") else 0)
+
+    if "memo" in data:
+        fields.append("memo=%s")
+        values.append(data.get("memo") or "")
+
+    if not fields:
+        return jsonify({"ok": True})
+
+    values.append(event_id)
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _ensure_calendar_events_columns(cur)
+            cur.execute(f"update calendar_events set {', '.join(fields)} where id=%s", values)
+        conn.commit()
+
+    return jsonify({"ok": True})
+
+@app.route("/api/events/<int:event_id>", methods=["DELETE"])
+def delete_event(event_id):
+    ensure_db()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("delete from calendar_events where id=%s", (event_id,))
+        conn.commit()
+    return jsonify({"ok": True})
+
+# ===============================
+# ✅ 채팅 API
+# ===============================
+@app.route("/api/chat/messages", methods=["GET"])
+def chat_messages():
+    ensure_db()
+    try:
+        after_id = int(request.args.get("after_id", 0))
+    except Exception:
+        after_id = 0
+    room = (request.args.get("room") or "main").strip() or "main"
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select id, sender, message, created_at, client_id
+                from chat_messages
+                where room = %s and id > %s
+                order by id asc
+                """,
                 (room, after_id),
             )
             rows = cur.fetchall()
 
-    msgs = []
-    for r in rows:
-        msgs.append({
-            "id": r[0],
-            "room": r[1],
-            "sender": r[2],
-            "message": r[3],
-            "created_at": r[4].isoformat() if r[4] else None,
-        })
-    return jsonify({"ok": True, "messages": msgs})
-
+    return jsonify(
+        {
+            "ok": True,
+            "messages": [
+                {"id": r[0], "sender": r[1], "message": r[2], "created_at": r[3].isoformat() if r[3] else None, "client_id": r[4]}
+                for r in rows
+            ],
+        }
+    )
 
 @app.route("/api/chat/send", methods=["POST"])
-def api_chat_send():
+def send_chat():
+    ensure_db()
     data = request.get_json(silent=True) or {}
-    room = (data.get("room") or "main").strip()[:50]
-    sender = (data.get("sender") or "").strip()[:50]
+
+    room = (data.get("room") or "main").strip() or "main"
+    sender = (data.get("sender") or "익명").strip()
+    client_id = (data.get("client_id") or "").strip() or None
     message = (data.get("message") or "").strip()
-
+    client_id = (data.get("client_id") or "").strip() or None
     if not message:
-        return jsonify({"ok": False, "error": "empty message"}), 400
+        return jsonify({"ok": False, "error": "empty_message"}), 400
 
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True})
+    now = _now()
 
-    try:
-        with _get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "insert into chat_messages(room, sender, message) values (%s,%s,%s)",
-                    (room, sender, message),
-                )
-            conn.commit()
-        return jsonify({"ok": True})
-    except Exception as e:
-        print("[chat send error]", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-# ===============================
-# ✅ Memos API
-# ===============================
-@app.route("/api/memos", methods=["GET"])
-def api_memos():
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True, "memos": []})
-
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("select id, content, created_at from memos order by id desc limit 500")
-            rows = cur.fetchall()
-
-    memos = []
-    for r in rows:
-        memos.append({
-            "id": r[0],
-            "text": r[1],
-            "created_at": r[2].isoformat() if r[2] else None,
-        })
-    return jsonify({"ok": True, "memos": memos})
-
-
-@app.route("/api/memos/add", methods=["POST"])
-def api_memos_add():
-    data = request.get_json(silent=True) or {}
-    text = (data.get("text") or "").strip()
-    if not text:
-        return jsonify({"ok": False, "error": "empty"}), 400
-
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True})
-
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("insert into memos (content) values (%s)", (text,))
-        conn.commit()
-
-    return jsonify({"ok": True})
-
-
-@app.route("/api/memos/delete", methods=["POST"])
-def api_memos_delete():
-    data = request.get_json(silent=True) or {}
-    memo_id = data.get("id")
-    try:
-        memo_id = int(memo_id)
-    except Exception:
-        return jsonify({"ok": False, "error": "invalid id"}), 400
-
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True})
-
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("delete from memos where id=%s", (memo_id,))
-        conn.commit()
-
-    return jsonify({"ok": True})
-
-
-# ===============================
-# ✅ Calendar API
-# ===============================
-@app.route("/api/events", methods=["GET","POST"])
-def api_events():
-    # ✅ 프론트가 POST /api/events로 저장을 보내는 경우를 지원 (기존 /api/events/add와 동일)
-    if request.method == "POST":
-        return api_events_add()
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True, "events": []})
-
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("select id, title, coalesce(date, (start_time at time zone 'UTC')::date) as date, start_time, end_time, coalesce(memo,'') as memo, (coalesce(all_day,0) <> 0) as all_day from calendar_events order by coalesce(date, (start_time at time zone 'UTC')::date) asc, start_time asc limit 2000")
-            rows = cur.fetchall()
-
-    events = []
-    for r in rows:
-        events.append({
-            "id": r[0],
-            "title": r[1],
-            "date": (r[2].isoformat() if r[2] else None),
-            "start": (r[3].isoformat() if r[3] else (r[2].isoformat() if r[2] else None)),
-            "end": (r[4].isoformat() if r[4] else None),
-            "memo": r[5] or "",
-            "allDay": bool(r[6]),
-        })
-    return jsonify({"ok": True, "events": events})
-
-
-@app.route("/api/events/add", methods=["POST"])
-def api_events_add():
-    data = request.get_json(silent=True) or {}
-
-    title = (data.get("title") or "").strip()
-    memo = (data.get("memo") or "").strip()
-
-    # Supabase 테이블 all_day가 int4(0/1)라서 일단 int로 저장
-    all_day_bool = bool(data.get("allDay") or data.get("all_day") or False)
-    all_day = 1 if all_day_bool else 0
-
-    # ✅ 프론트가 {start/end} 또는 {date/start/end}로 보내는 경우 모두 지원
-    date = (data.get("date") or "").strip()
-    start_raw = (data.get("start") or "").strip()
-    end_raw = (data.get("end") or "").strip()
-
-    def _split_dt(v: str):
-        v = (v or "").strip()
-        if not v:
-            return "", ""
-        # ISO(YYYY-MM-DDTHH:MM...) 형태면 날짜/시각 분리
-        if "T" in v:
-            d, t = v.split("T", 1)
-            t = t.split("+", 1)[0].split("Z", 1)[0]
-            t = (t[:5] if len(t) >= 5 else "")
-            return d.strip(), t.strip()
-        # YYYY-MM-DD만 오면 날짜로 취급
-        if len(v) >= 10 and v[4] == "-" and v[7] == "-":
-            return v[:10], ""
-        # HH:MM만 오면 시각으로 취급
-        if len(v) >= 4 and v[2] == ":":
-            return "", v[:5]
-        return "", ""
-
-    s_date, s_hm = _split_dt(start_raw)
-    e_date, e_hm = _split_dt(end_raw)
-
-    # 과거 포맷: start/end가 HH:MM만 오는 경우
-    if not s_date and s_hm and date:
-        s_date = date
-    if not e_date and e_hm and date:
-        e_date = date
-
-    # date가 비어있으면 start의 날짜를 date로 사용
-    if not date:
-        date = s_date
-
-    # 최소값 체크
-    if not title or not date:
-        return jsonify({"ok": False, "error": "missing title/date"}), 400
-
-    # timestamptz 컬럼에 넣을 ISO 문자열 생성 (시간이 없으면 None)
-    # ※ Render/Supabase 환경의 TZ 혼선 방지를 위해 +09:00 고정
-    def _to_ts(d: str, hm: str):
-        if not d:
-            return None
-        if not hm:
-            return None
-        return f"{d}T{hm}:00+09:00"
-
-    start_time = _to_ts(s_date or date, s_hm)
-    end_time = _to_ts(e_date or s_date or date, e_hm)
-
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True})
-
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "insert into calendar_events (title, date, start_time, end_time, memo, all_day) "
-                "values (%s, %s, %s, %s, %s, %s)",
-                (title, date, start_time, end_time, (memo or None), all_day),
-            )
-        conn.commit()
-
-    return jsonify({"ok": True})
-
-
-@app.route("/api/events/delete", methods=["POST"])
-def api_events_delete():
-    data = request.get_json(silent=True) or {}
-    event_id = data.get("id")
-    try:
-        event_id = int(event_id)
-    except Exception:
-        return jsonify({"ok": False, "error": "invalid id"}), 400
-
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True})
-
-    with _get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("delete from calendar_events where id=%s", (event_id,))
-        conn.commit()
-
-    return jsonify({"ok": True})
-
-
-# ===============================
-# ✅ Presence API
-# ===============================
-@app.route("/api/presence/ping", methods=["POST"])
-def api_presence_ping():
-    data = request.get_json(silent=True) or {}
-    client_id = (data.get("client_id") or "").strip()
-    sender = (data.get("sender") or "").strip()
-    animal = (data.get("animal") or "").strip()
-
-    if not client_id:
-        return jsonify({"ok": False, "error": "missing client_id"}), 400
-
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True})
-
-    with _get_conn() as conn:
+    with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                insert into presence (client_id, sender, animal, last_seen)
-                values (%s, %s, %s, now())
-                on conflict (client_id) do update
-                set sender=excluded.sender,
-                    animal=excluded.animal,
-                    last_seen=now()
+                insert into chat_messages (room, sender, message, created_at, client_id)
+                values (%s, %s, %s, %s, %s)
+                returning id
                 """,
-                (client_id, sender, animal),
+                (room, sender, message, now, client_id),
+            )
+            msg_id = cur.fetchone()[0]
+        conn.commit()
+
+    # ✅ Push 알림 (옵션): 새 메시지 도착 시 구독자에게 푸시 전송
+    # - 실패해도 채팅 저장/응답은 정상 처리되도록 try/except
+    try:
+        notify_all(
+            title=f"새 메시지: {sender}",
+            body=(message[:120] + ("…" if len(message) > 120 else "")),
+            url="/",
+        )
+    except Exception as _e:
+        print("[push] notify_all failed:", _e)
+
+    return jsonify({"ok": True, "id": msg_id, "created_at": now.isoformat(), "client_id": client_id})
+
+
+# ===============================
+# ✅ 최근 접속자(Presence) API
+# ===============================
+@app.route("/api/presence/ping", methods=["POST"])
+def presence_ping():
+    ensure_db()
+    data = request.get_json(silent=True) or {}
+    client_id = (data.get("client_id") or "").strip()
+    sender = (data.get("sender") or "").strip() or None
+    animal = (data.get("animal") or "").strip() or None
+    if not client_id:
+        return jsonify({"ok": False, "error": "no_client_id"}), 400
+
+    ua = request.headers.get("User-Agent", "")
+    now = _now()
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into presence (client_id, sender, animal, last_seen, user_agent)
+                values (%s, %s, %s, %s, %s)
+                on conflict (client_id) do update
+                set sender = coalesce(excluded.sender, presence.sender),
+                    animal = coalesce(excluded.animal, presence.animal),
+                    last_seen = excluded.last_seen,
+                    user_agent = excluded.user_agent
+                """,
+                (client_id, sender, animal, now, ua),
             )
         conn.commit()
 
-    return jsonify({"ok": True})
-
+    return jsonify({"ok": True, "last_seen": now.isoformat()})
 
 @app.route("/api/presence/list", methods=["GET"])
-def api_presence_list():
-    minutes = request.args.get("minutes", "3")
+def presence_list():
+    ensure_db()
     try:
-        minutes = int(minutes)
+        minutes = int(request.args.get("minutes", "5"))
     except Exception:
-        minutes = 3
+        minutes = 5
+    if minutes < 1:
+        minutes = 1
+    if minutes > 60:
+        minutes = 60
 
-    if not _DB_URL or psycopg is None:
-        return jsonify({"ok": True, "list": []})
-
-    with _get_conn() as conn:
+    with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "select client_id, sender, animal, last_seen from presence where last_seen > (now() - interval '%s minutes') order by last_seen desc limit 50",
+                """
+                select client_id, sender, animal, last_seen
+                from presence
+                where last_seen >= (now() - (%s || ' minutes')::interval)
+                order by last_seen desc
+                limit 30
+                """,
                 (minutes,),
             )
             rows = cur.fetchall()
 
-    items = [
-        {"client_id": r[0], "sender": (r[1] or ""), "animal": (r[2] or ""), "last_seen": r[3].isoformat() if r[3] else None}
-        for r in rows
-    ]
-    return jsonify({"ok": True, "list": items})
+    return jsonify({
+        "ok": True,
+        "minutes": minutes,
+        "users": [
+            {"client_id": r[0], "sender": (r[1] or ""), "animal": (r[2] or ""), "last_seen": r[3].isoformat() if r[3] else None}
+            for r in rows
+        ]
+    })
 
 
 # ===============================
-# ✅ Run
+# ✅ PWA (manifest / service worker)
+#    - iOS Web Push는 /service-worker.js 가 "루트"로 열려야 함
+#    - 파일을 static/에 두든, 루트에 두든 둘 다 대응(404 방지)
 # ===============================
+from flask import send_from_directory
+
+def _send_file_from_static_or_root(filename: str, mimetype: str):
+    # 1) static/ 우선
+    static_dir = app.static_folder  # 기본: <project>/static
+    if static_dir and os.path.exists(os.path.join(static_dir, filename)):
+        return send_from_directory(static_dir, filename, mimetype=mimetype, max_age=0)
+    # 2) 프로젝트 루트(app.root_path) 폴백
+    root_dir = app.root_path
+    return send_from_directory(root_dir, filename, mimetype=mimetype, max_age=0)
+
+@app.route("/service-worker.js")
+def service_worker():
+    return _send_file_from_static_or_root("service-worker.js", "application/javascript")
+
+@app.route("/manifest.webmanifest")
+def webmanifest():
+    return _send_file_from_static_or_root("manifest.webmanifest", "application/manifest+json")
+
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "5000"))
+    ensure_db()
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
