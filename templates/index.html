@@ -462,6 +462,7 @@
       </div>
 
       <form method="POST" class="memo-row">
+        <input type="hidden" name="client_id" id="memoClientId">
         <input type="text" name="memo_keyword" placeholder="메모 추가..." autocomplete="off" inputmode="text">
         <button class="primary" type="submit" name="action" value="add_memo">추가</button>
       </form>
@@ -533,6 +534,13 @@
       return await r.json();
     }
     async function jpost(url, body){
+      // ✅ 모든 저장 요청에 client_id 자동 포함(내 알림 제외용)
+      try {
+        if (body && typeof body === "object" && CLIENT_ID && !("client_id" in body)) {
+          body.client_id = CLIENT_ID;
+        }
+      } catch (e) {}
+
       const r = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -541,7 +549,8 @@
       });
       return await r.json();
     }
-    async function jdel(url){
+
+async function jdel(url){
       const r = await fetch(url, { method: "DELETE", credentials: "same-origin" });
       return await r.json();
     }
@@ -637,6 +646,12 @@
         CLIENT_ID = (Date.now().toString(36) + Math.random().toString(36).slice(2));
       }
       localStorage.setItem("chat_client_id", CLIENT_ID);
+
+    try {
+      const mci = document.getElementById("memoClientId");
+      if (mci) mci.value = CLIENT_ID;
+    } catch(e) {}
+
     }
 
     // ✅ 기기/브라우저별 동물 별명 (client_id가 다르면 자동으로 구분되게)
