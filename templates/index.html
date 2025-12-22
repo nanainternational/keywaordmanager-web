@@ -21,8 +21,7 @@
 
 
   <!-- FullCalendar -->
-  <link href="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/main.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.15/main.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
   <style>
@@ -891,13 +890,17 @@
 
       try {
         if (currentEventId) {
-          await jput(`/api/events/${currentEventId}`, { title, start, end: end || null, memo });
+          // ✅ 백엔드가 PUT(/api/events/{id})를 지원하지 않아서: 삭제 후 재등록 방식
+          await jpost("/api/events/delete", { id: currentEventId });
+          await jpost("/api/events", { title, start, end: end || null, allDay: false, memo });
         } else {
           await jpost("/api/events", { title, start, end: end || null, allDay: false, memo });
         }
         closeModal();
         calendar.refetchEvents();
       } catch (e2) {
+        console.error(e2);
+        alert("요청이 실패했습니다. (콘솔/Network 확인)");
       } finally {
         evSave.disabled = false;
       }
@@ -913,10 +916,12 @@
       evDelete.disabled = true;
 
       try {
-        await jdel(`/api/events/${currentEventId}`);
+        await jpost("/api/events/delete", { id: currentEventId });
         closeModal();
         calendar.refetchEvents();
       } catch (e2) {
+        console.error(e2);
+        alert("요청이 실패했습니다. (콘솔/Network 확인)");
       } finally {
         evDelete.disabled = false;
       }
@@ -941,7 +946,7 @@
         events: async (info, success, failure) => {
           try {
             const data = await jget("/api/events");
-            success(data || []);
+            success((data && data.events) ? data.events : []);
           } catch (e) {
             failure(e);
           }
