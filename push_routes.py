@@ -125,6 +125,21 @@ def send_test():
     return jsonify({"ok": True, "saved": len(_SUBS), "sent": sent, "failed": failed, "errors": errors})
 
 
+
+
+def notify_all(title: str, body: str = "", url: str = "/"):
+    """
+    index.html의 pwa-push.js와 호환되는 형태로 전체 구독자에게 푸시 전송
+    - 서버 내부에서 호출용 (예: 새 채팅 메시지 발생 시)
+    """
+    payload = {
+        "title": title or "알림",
+        "body": body or "",
+        "url": url or "/",
+    }
+    send_push(payload)
+
+
 def send_push(payload: dict):
     """
     서버 내부에서 호출용 (예: 새 채팅 메시지 발생 시 푸시)
