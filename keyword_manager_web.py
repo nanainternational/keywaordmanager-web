@@ -82,7 +82,18 @@ def ensure_db():
                     )
                     """
                 )
-                # ✅ client_id 컬럼이 없으면 추가 (내/남 구분)
+                
+                # push subscriptions (PWA Web Push)
+                cur.execute(
+                    """
+                    create table if not exists push_subscriptions(
+                        endpoint text primary key,
+                        subscription_json text not null,
+                        created_at timestamptz not null default now()
+                    )
+                    """
+                )
+# ✅ client_id 컬럼이 없으면 추가 (내/남 구분)
                 cur.execute(
                     """
                     select 1
