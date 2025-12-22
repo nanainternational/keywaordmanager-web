@@ -85,9 +85,9 @@ def _ensure_calendar_schema(cur):
 
         # extra fields used by UI
         cur.execute('alter table calendar_events add column if not exists memo text')
-        cur.execute('alter table calendar_events add column if not exists all_day boolean default false')
-        cur.execute('alter table calendar_events add column if not exists start_time text')
-        cur.execute('alter table calendar_events add column if not exists end_time text')
+        cur.execute('alter table calendar_events add column if not exists all_day int4 not null default 0')
+        cur.execute('alter table calendar_events add column if not exists start_time timestamptz')
+        cur.execute('alter table calendar_events add column if not exists end_time timestamptz')
     except Exception as e:
         print("⚠️ calendar_events schema check failed:", repr(e))
 
@@ -108,7 +108,7 @@ def _init_db():
             cur.execute("""
             create table if not exists memos (
                 id bigserial primary key,
-                text text not null,
+                content text not null,
                 created_at timestamptz not null default now()
             )
             """)
@@ -116,10 +116,12 @@ def _init_db():
             create table if not exists calendar_events (
                 id bigserial primary key,
                 title text not null,
-                date text not null,
-                start_time text,
-                end_time text,
-                created_at timestamptz not null default now()
+                date date not null,
+                start_time timestamptz,
+                end_time timestamptz,
+                created_at timestamptz not null default now(),
+                all_day int4 not null default 0,
+                memo text
             )
             """)
             _ensure_calendar_schema(cur)
@@ -156,7 +158,7 @@ def index():
             if text and _DB_URL and psycopg is not None:
                 with _get_conn() as conn:
                     with conn.cursor() as cur:
-                        cur.execute("insert into memos (text) values (%s)", (text,))
+                        cur.execute("insert into memos (content) values (%s)", (text,))
                     conn.commit()
 
         # ✅ 메모 삭제
@@ -183,7 +185,7 @@ def index():
                     with conn.cursor() as cur:
                         cur.execute(
                             "insert into calendar_events (title, date, start_time, end_time, memo, all_day) values (%s, %s, %s, %s, %s, %s)",
-                            (title, date, start_time or None, end_time or None),
+                            (title, date, start_time or None, end_time or None, None, 0),
                         )
                     conn.commit()
 
@@ -304,7 +306,7 @@ def api_memos():
 
     with _get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("select id, text, created_at from memos order by id desc limit 500")
+            cur.execute("select id, content, created_at from memos order by id desc limit 500")
             rows = cur.fetchall()
 
     memos = []
@@ -329,7 +331,7 @@ def api_memos_add():
 
     with _get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("insert into memos (text) values (%s)", (text,))
+            cur.execute("insert into memos (content) values (%s)", (text,))
         conn.commit()
 
     return jsonify({"ok": True})
